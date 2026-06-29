@@ -1,0 +1,29 @@
+# 1. 核心依賴套件（絕對不能推，Vercel 部署時會自己安裝）
+node_modules/
+/.pnp
+.pnp.js
+
+# 2. Next.js 編譯產物與快取（避免檔案衝突與肥大）
+/.next/
+/out/
+build/
+
+# 3. 關鍵：環境變數與金鑰（保護你的 Supabase 金鑰安全）
+.env
+.env.local
+.env.development.local
+.env.test.local
+.env.production.local
+*.env.local
+
+# 4. 測試與日誌檔案
+npm-debug.log*
+yarn-debug.log*
+yarn-error.log*
+.pnpm-debug.log*
+
+# 5. 系統與編輯器暫存檔 (Mac / Windows / VS Code)
+.DS_Store
+*.pem
+.vscode/
+.idea/
