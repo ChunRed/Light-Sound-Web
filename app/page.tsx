@@ -59,12 +59,12 @@ export default function Home() {
     const b_raw = (item.f2_445nm + item.f3_480nm) / 2;
 
     const maxRaw = Math.max(r_raw, g_raw, b_raw, 1);
-    
+
     const r = Math.min(Math.round((r_raw / maxRaw) * 255), 255);
     const g = Math.min(Math.round((g_raw / maxRaw) * 255), 255);
     const b = Math.min(Math.round((b_raw / maxRaw) * 255), 255);
 
-    const alpha = Math.min(item.clear_luminous / 2000 + 0.2, 1); 
+    const alpha = Math.min(item.clear_luminous / 2000 + 0.2, 1);
 
     return `rgba(${r}, ${g}, ${b}, ${alpha})`;
   };
@@ -85,7 +85,9 @@ export default function Home() {
         <div className="grid grid-cols-3 md:grid-cols-6 gap-4">
           {dataList.map((item, index) => {
             const backgroundColor = convertToRGB(item);
+            // 1. 強制指定以 Asia/Taipei 時區來解析該時間字串，防止瀏覽器二次疊加時區
             const localTime = new Date(item.created_at).toLocaleString("zh-TW", {
+              timeZone: "Asia/Taipei",
               hour12: false,
             });
 
@@ -114,9 +116,9 @@ export default function Home() {
                   <div>
                     <p className="text-neutral-600 font-mono text-[10px] mb-1">{localTime.split(" ")[1] || localTime}</p> {/* 僅顯示時間部分，讓排版更乾淨 */}
                     <div className="space-y-0.5 font-mono text-[10px] text-neutral-500">
-                      <p><span>R:</span> <span className="text-neutral-400">{Math.round((item.f7_630nm + item.f8_680nm)/2)}</span></p>
-                      <p><span>G:</span> <span className="text-neutral-400">{Math.round((item.f5_555nm + item.f6_590nm)/2)}</span></p>
-                      <p><span>B:</span> <span className="text-neutral-400">{Math.round((item.f2_445nm + item.f3_480nm)/2)}</span></p>
+                      <p><span>R:</span> <span className="text-neutral-400">{Math.round((item.f7_630nm + item.f8_680nm) / 2)}</span></p>
+                      <p><span>G:</span> <span className="text-neutral-400">{Math.round((item.f5_555nm + item.f6_590nm) / 2)}</span></p>
+                      <p><span>B:</span> <span className="text-neutral-400">{Math.round((item.f2_445nm + item.f3_480nm) / 2)}</span></p>
                       <p><span className="text-neutral-300">Clear: {item.clear_luminous}</span></p>
                     </div>
                   </div>
@@ -128,7 +130,7 @@ export default function Home() {
             );
           })}
         </div>
-        
+
         {dataList.length === 0 && (
           <div className="text-center py-20 text-neutral-600 font-mono">
             LOADING DATA...
