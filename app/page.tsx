@@ -85,9 +85,9 @@ export default function Home() {
         <div className="grid grid-cols-3 md:grid-cols-6 gap-4">
           {dataList.map((item, index) => {
             const backgroundColor = convertToRGB(item);
-            // 1. 強制指定以 Asia/Taipei 時區來解析該時間字串，防止瀏覽器二次疊加時區
-            const localTime = new Date(item.created_at).toLocaleString("zh-TW", {
-              timeZone: "Asia/Taipei",
+            // 1. 資料庫時間以 UTC (+00:00) 格式儲存實際的台北時間，故採用 UTC 時區解析以顯示正確的本地時間
+            const localTime = new Date(item.created_at).toLocaleTimeString("zh-TW", {
+              timeZone: "UTC",
               hour12: false,
             });
 
@@ -114,7 +114,7 @@ export default function Home() {
                 {/* 數據資訊區域（維持黑灰白單色） */}
                 <div className="p-3 flex-1 flex flex-col justify-between text-[11px] text-neutral-400">
                   <div>
-                    <p className="text-neutral-600 font-mono text-[10px] mb-1">{localTime.split(" ")[1] || localTime}</p> {/* 僅顯示時間部分，讓排版更乾淨 */}
+                    <p className="text-neutral-600 font-mono text-[10px] mb-1">{localTime}</p> {/* 僅顯示時間部分，讓排版更乾淨 */}
                     <div className="space-y-0.5 font-mono text-[10px] text-neutral-500">
                       <p><span>R:</span> <span className="text-neutral-400">{Math.round((item.f7_630nm + item.f8_680nm) / 2)}</span></p>
                       <p><span>G:</span> <span className="text-neutral-400">{Math.round((item.f5_555nm + item.f6_590nm) / 2)}</span></p>
