@@ -18,7 +18,7 @@ interface LightData {
   clear_luminous: number;
 }
 
-const API_KEY = "AIzaSyB3GET3bkEnIXfp9bhcoGplFNtWE8uDzgU"; 
+const API_KEY = process.env.NEXT_PUBLIC_GEMINI_API_KEY || "";
 const genAI = new GoogleGenerativeAI(API_KEY);
 
 // 文字生成指令
