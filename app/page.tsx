@@ -1,7 +1,7 @@
 "use client";
 
 import { useEffect, useState, useRef } from "react";
-import { supabase } from "../lib/supabase";
+import { supabase, aiSupabase } from "../lib/supabase";
 import { GoogleGenerativeAI } from "@google/generative-ai";
 
 interface LightData {
@@ -76,8 +76,35 @@ export default function Home() {
 
     if (error) {
       console.error("讀取資料失敗:", error);
-    } else if (data) {
+      return;
+    }
+
+    if (data) {
       setDataList(data);
+
+      // 從第二個 Supabase 資料庫讀取已經存在的 AI 詩句
+      const recordIds = data.map((item) => item.id);
+      if (recordIds.length > 0) {
+        try {
+          const { data: aiData, error: aiError } = await aiSupabase
+            .from("ai_descriptions")
+            .select("record_id, description")
+            .in("record_id", recordIds);
+
+          if (aiError) {
+             console.error("讀取 AI 描述失敗:", aiError);
+          } else if (aiData) {
+             // 轉換成鍵值對，更新到狀態中
+             const descMap: Record<number, string> = {};
+             aiData.forEach((row) => {
+               descMap[row.record_id] = row.description;
+             });
+             setAiDescriptions((prev) => ({ ...prev, ...descMap }));
+          }
+        } catch (e) {
+          console.error("讀取 AI 描述異常:", e);
+        }
+      }
     }
   };
 
@@ -124,6 +151,32 @@ export default function Home() {
       
       const response = await result.response;
       const text = response.text().trim();
+
+      // 寫入另一個專案的 Supabase 資料庫 (非同步執行，不阻礙前端 UI 更新)
+      (async () => {
+        try {
+          const { error: insertError } = await aiSupabase
+            .from("ai_descriptions")
+            .insert({
+              record_id: item.id,
+              description: text,
+              prompt: prompt,
+              model_name: "gemini-3.1-flash-lite",
+            });
+          if (insertError) {
+            console.error(`[aiSupabase] 寫入 AI 描述失敗 (ID: ${item.id}):`, {
+              message: insertError.message,
+              details: insertError.details,
+              hint: insertError.hint,
+              code: insertError.code
+            });
+          } else {
+            console.log(`[aiSupabase] 成功寫入 AI 描述 (ID: ${item.id})`);
+          }
+        } catch (err) {
+          console.error(`[aiSupabase] 寫入 AI 描述異常 (ID: ${item.id}):`, err);
+        }
+      })();
 
       setAiDescriptions((prev) => ({
         ...prev,
@@ -205,7 +258,7 @@ export default function Home() {
         </header>
 
         {/* 修正 3：調整網格排版，手機版每排 3 個，電腦版每排 6 個，更適合大批量色彩展示 */}
-        <div className="grid grid-cols-3 md:grid-cols-6 gap-4">
+        <div className="grid grid-cols-3 md:grid-cols-6 gap-0">
           {dataList.map((item, index) => {
             const backgroundColor = convertToRGB(item);
             // 1. 資料庫時間以 UTC (+00:00) 格式儲存實際的台北時間，故採用 UTC 時區解析以顯示正確的本地時間
@@ -217,7 +270,7 @@ export default function Home() {
             return (
               <div
                 key={item.id}
-                className="group bg-black rounded-xl overflow-hidden shadow-lg border border-neutral-900 flex flex-col transition-all duration-500 hover:scale-105"
+                className="group bg-black overflow-hidden relative flex flex-col transition-all duration-500 hover:scale-105 hover:z-10"
               >
                 {/* 顏色與 Overlay 區域 */}
                 <div
@@ -256,24 +309,19 @@ export default function Home() {
                       )}
                     </div>
 
-                    {/* 下半部：詳細 RGB / 頻道數值 */}
+                    {/* 下半部：詳細 RGB / 頻道數值 與 時間 */}
                     <div className="border-t border-neutral-900 pt-2 space-y-0.5 font-mono text-[9px] text-neutral-500">
                       <div className="flex justify-between">
                         <span>R: <span className="text-neutral-300">{Math.round((item.f7_630nm + item.f8_680nm) / 2)}</span></span>
                         <span>G: <span className="text-neutral-300">{Math.round((item.f5_555nm + item.f6_590nm) / 2)}</span></span>
                         <span>B: <span className="text-neutral-300">{Math.round((item.f2_445nm + item.f3_480nm) / 2)}</span></span>
                       </div>
-                      <div className="flex justify-between text-[8px] mt-1">
-                        <span>Clear: <span className="text-neutral-400">{item.clear_luminous}</span></span>
-                        <span className="text-neutral-600">#{item.id}</span>
+                      <div className="flex justify-between text-[8px] mt-1 text-neutral-400">
+                        <span>時間: <span>{localTime}</span></span>
+                        <span>#{item.id}</span>
                       </div>
                     </div>
                   </div>
-                </div>
-
-                {/* 正常顯示區域：僅時間 */}
-                <div className="p-2 bg-neutral-950 text-center border-t border-neutral-900">
-                  <p className="text-neutral-400 font-mono text-[10px] tracking-wider">{localTime}</p>
                 </div>
               </div>
             );
