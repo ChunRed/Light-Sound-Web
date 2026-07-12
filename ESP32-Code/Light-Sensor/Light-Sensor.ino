@@ -29,7 +29,7 @@ const char* supabase_key = "sb_publishable_zAGCeJzxNdwK3zj8dipvHQ_JhkjCXvY";
 Adafruit_AS7341 as7341;
 
 // 時間控制變數（使用 millis() 避免阻塞）
-unsigned long delayTime = 1 * 60 * 1000; // 偵測與上傳的間隔時間（目前設定為 1 分鐘）
+unsigned long delayTime = 2 * 60 * 1000; // 偵測與上傳的間隔時間（目前設定為 2 分鐘）
 unsigned long lastMillis = 0;
 
 unsigned long ledLastMillis = 0;         // 心跳燈專用計時

@@ -75,6 +75,7 @@ export default function Home() {
   const [dataList, setDataList] = useState<LightData[]>([]);
   const [aiDescriptions, setAiDescriptions] = useState<Record<number, string>>({});
   const [generatingIds, setGeneratingIds] = useState<Set<number>>(new Set());
+  const [hoveredItem, setHoveredItem] = useState<LightData | null>(null);
   const requestedIds = useRef<Set<number>>(new Set());
 
   const [guiParams, setGuiParams] = useState<GuiParams>({
@@ -95,7 +96,7 @@ export default function Home() {
       .from("LightDate")
       .select("*")
       .order("created_at", { ascending: false })
-      .limit(60); // 修正 1：將原本的 limit 10 改為 60
+      .limit(400); // 修正 1：將限制修改為 400 筆
 
     if (error) {
       console.error("讀取資料失敗:", error);
@@ -336,99 +337,236 @@ export default function Home() {
     let alpha = Math.max(0, Math.min(baseAlpha * guiParams.alphaScale, 1));
     alpha = applyContrastCurve(alpha, guiParams.contrast);
 
-    return `rgba(${r}, ${g}, ${b}, ${alpha})`;
+    // Compute relative luminance blended over a black background (0,0,0)
+    // Formula: Y = 0.299 * (R * alpha) + 0.587 * (G * alpha) + 0.114 * (B * alpha)
+    const blendedLuminance = (0.299 * r + 0.587 * g + 0.114 * b) * alpha;
+    const isLight = blendedLuminance > 128;
+
+    return {
+      rgba: `rgba(${r}, ${g}, ${b}, ${alpha})`,
+      isLight,
+      r,
+      g,
+      b
+    };
   };
 
   return (
     <main className="min-h-screen bg-black text-white p-8">
-      <div className="max-w-7xl mx-auto"> {/* 修正 2：將最大寬度放大至 max-w-7xl，讓 60 筆資料更寬敞 */}
-        <header className="mb-8 border-b border-neutral-900 pb-4">
+      <div className="max-w-7xl mx-auto">
+        <header className="mb-6 border-b border-neutral-900 pb-4">
           <h1 className="text-3xl font-bold tracking-wider text-neutral-100">
-            Ambient Light Spectrum ── 環境光即時視覺化
+            Glimpse of Light - Data Visualization
           </h1>
           <p className="text-neutral-500 text-sm mt-2">
-            當前顯示最新 60 筆環境光感測數據，與硬體端同步即時更新
+            create by No Side Here & TK Wang
           </p>
         </header>
 
-        {/* 修正 3：調整網格排版，手機版每排 3 個，電腦版每排 6 個，更適合大批量色彩展示 */}
-        <div className="grid grid-cols-3 md:grid-cols-6 gap-0">
-          {dataList.map((item, index) => {
-            const backgroundColor = convertToRGB(item);
-            // 1. 資料庫時間以 UTC (+00:00) 格式儲存實際的台北時間，故採用 UTC 時區解析以顯示正確的本地時間
-            const localTime = new Date(item.created_at).toLocaleTimeString("zh-TW", {
-              timeZone: "UTC",
-              hour12: false,
-            });
+        {/* 頂部 AI 色彩感知意境顯示區域 (滾動時固定於最上方) */}
+        <div className="sticky top-0 z-30 bg-black/90 backdrop-blur-md py-4 border-b border-neutral-900/50 mb-6">
+          {(() => {
+            const displayItem = hoveredItem || dataList[0];
+            if (!displayItem) return null;
+
+            const isPlaceholder = displayItem.id < 0;
+            const desc = isPlaceholder ? "" : aiDescriptions[displayItem.id];
+            const isGenerating = !isPlaceholder && generatingIds.has(displayItem.id);
+            const displayTime = isPlaceholder
+              ? ""
+              : new Date(displayItem.created_at).toLocaleTimeString("zh-TW", {
+                  timeZone: "UTC",
+                  hour12: false,
+                });
 
             return (
-              <div
-                key={item.id}
-                className="group bg-black overflow-hidden relative flex flex-col transition-all duration-500 hover:scale-105 hover:z-10"
-              >
-                {/* 顏色與 Overlay 區域 */}
-                <div
-                  className="h-32 w-full transition-colors duration-500 relative flex items-center justify-center"
-                  style={{ backgroundColor }}
-                >
-                  {/* Realtime NEW 標記 */}
-                  {index === 0 && (
-                    <span className="absolute top-2 right-2 z-10 bg-white text-black text-[9px] uppercase font-bold px-1.5 py-0.5 rounded-full animate-pulse">
-                      NEW
-                    </span>
-                  )}
-
-                  {/* Hover 時呈現的詳細資訊與 AI 描述遮罩 */}
-                  <div className="absolute inset-0 bg-black/90 opacity-0 group-hover:opacity-100 transition-opacity duration-300 flex flex-col justify-between p-3 text-[11px]">
-                    {/* 上半部：AI 詩句 */}
-                    <div className="flex-1 flex items-center justify-center text-center px-1">
-                      {aiDescriptions[item.id] ? (
-                        <p className="text-neutral-200 font-medium leading-relaxed italic text-[11px]">
-                          「{aiDescriptions[item.id]}」
-                        </p>
-                      ) : generatingIds.has(item.id) ? (
-                        <p className="text-neutral-500 animate-pulse font-mono text-[10px]">
-                          🔮 正在感知色彩中...
-                        </p>
-                      ) : (
-                        <button
-                          onClick={(e) => {
-                            e.stopPropagation();
-                            generateDescriptionForRecord(item);
-                          }}
-                          className="px-2.5 py-1 bg-neutral-900 hover:bg-neutral-800 border border-neutral-800 hover:border-neutral-700 text-neutral-300 rounded-full transition-all text-[10px] font-medium tracking-wide flex items-center gap-1 cursor-pointer"
-                        >
-                          ✨ 生成 AI 詩句
-                        </button>
-                      )}
-                    </div>
-
-                    {/* 下半部：詳細 RGB / 頻道數值 與 時間 */}
-                    <div className="border-t border-neutral-900 pt-2 space-y-0.5 font-mono text-[9px] text-neutral-500">
-                      <div className="flex justify-between">
-                        <span>R: <span className="text-neutral-300">{Math.round((item.f7_630nm + item.f8_680nm) / 2)}</span></span>
-                        <span>G: <span className="text-neutral-300">{Math.round((item.f5_555nm + item.f6_590nm) / 2)}</span></span>
-                        <span>B: <span className="text-neutral-300">{Math.round((item.f2_445nm + item.f3_480nm) / 2)}</span></span>
-                      </div>
-                      <div className="flex justify-between text-[8px] mt-1 text-neutral-400">
-                        <span>時間: <span>{localTime}</span></span>
-                        <span>#{item.id}</span>
-                      </div>
-                    </div>
+              <div className="bg-neutral-950/30 border border-neutral-900/30 rounded-xl p-4 flex flex-col md:flex-row md:items-center justify-between min-h-[76px] transition-all duration-300">
+                <div className="space-y-1 flex-1 pr-4">
+                  <div className="text-[10px] text-neutral-500 font-mono tracking-widest uppercase flex items-center gap-2">
+                    <span>Color Perception</span>
+                    {!isPlaceholder && (
+                      <span className="text-[9px] text-neutral-600 bg-neutral-900/50 px-1.5 py-0.5 rounded font-normal">
+                        #{displayItem.id} ({displayTime}) {hoveredItem ? "已對焦" : "最新數據"}
+                      </span>
+                    )}
                   </div>
+                  
+                  {isPlaceholder ? (
+                    <p className="text-neutral-600 text-xs font-mono">等待感測器數據傳入...</p>
+                  ) : isGenerating ? (
+                    <p className="text-neutral-400 text-sm font-mono animate-pulse">正在透過色彩感知意境中...</p>
+                  ) : desc ? (
+                    <p className="text-neutral-200 text-sm italic font-medium leading-relaxed">
+                      「{desc}」
+                    </p>
+                  ) : (
+                    <p className="text-neutral-500 text-xs font-mono">此時間點尚未生成感知文字。</p>
+                  )}
                 </div>
               </div>
             );
-          })}
+          })()}
         </div>
 
-        {dataList.length === 0 && (
-          <div className="text-center py-20 text-neutral-600 font-mono">
-            LOADING DATA...
+        {/* 色彩矩陣與時序軸線卡片 */}
+        <div className="bg-neutral-950/40 border border-neutral-900/30 rounded-2xl p-4 md:p-6 shadow-3xl">
+          <div className="flex flex-col">
+            {/* X 軸標示列 (時間差距，每格差距 1 分鐘) */}
+            <div className="flex mb-2">
+              {/* 左上角交叉單元格 */}
+              <div className="w-12 md:w-16 flex-shrink-0 select-none text-neutral-600 font-mono text-[9px] flex items-end justify-end pr-3 pb-1 border-r border-neutral-800/60">
+                t (min)
+              </div>
+              {/* X 軸標籤 */}
+              <div className="grid grid-cols-5 md:grid-cols-10 gap-[1px] flex-1 select-none text-neutral-500 font-mono text-[9px] text-center">
+                {Array.from({ length: 5 }).map((_, i) => (
+                  <div key={i} className="pb-1 border-b border-neutral-800/60">
+                    -{i * 2}m
+                  </div>
+                ))}
+                {Array.from({ length: 5 }).map((_, i) => (
+                  <div key={i + 5} className="hidden md:block pb-1 border-b border-neutral-800/60">
+                    -{(i + 5) * 2}m
+                  </div>
+                ))}
+              </div>
+            </div>
+
+            {/* Y 軸與色彩網格主體 */}
+            <div className="flex">
+              {/* Y 軸標示行 (以每排為單位之時間差距) */}
+              <div className="w-12 md:w-16 flex-shrink-0 select-none pr-3">
+                {/* 桌機版 Y 軸: 每排差距 20 分鐘 */}
+                <div className="hidden md:flex flex-col gap-[1px] text-neutral-500 font-mono text-[9px] text-right">
+                  {Array.from({ length: 40 }).map((_, i) => (
+                    <div key={i} className="h-24 flex items-center justify-end border-r border-neutral-800/60 pr-2">
+                      -{i * 20}m
+                    </div>
+                  ))}
+                </div>
+                {/* 手機版 Y 軸: 每排差距 10 分鐘 */}
+                <div className="flex md:hidden flex-col gap-[1px] text-neutral-500 font-mono text-[9px] text-right">
+                  {Array.from({ length: 80 }).map((_, i) => (
+                    <div key={i} className="h-24 flex items-center justify-end border-r border-neutral-800/60 pr-2">
+                      -{i * 10}m
+                    </div>
+                  ))}
+                </div>
+              </div>
+
+              {/* 色彩網格 */}
+              <div className="grid grid-cols-5 md:grid-cols-10 gap-[1px] bg-neutral-900/50 border border-neutral-900/20 rounded-lg overflow-hidden flex-1">
+                {(() => {
+                  // 填充 dataList 至 400 筆，若資料庫沒有對應資料則以預設黑色 placeholder 填充
+                  const paddedList = [...dataList];
+                  while (paddedList.length < 400) {
+                    paddedList.push({
+                      id: -paddedList.length - 1, // 獨特負數 ID 代表為預設黑色 placeholder
+                      created_at: new Date().toISOString(),
+                      f1_415nm: 0,
+                      f2_445nm: 0,
+                      f3_480nm: 0,
+                      f4_515nm: 0,
+                      f5_555nm: 0,
+                      f6_590nm: 0,
+                      f7_630nm: 0,
+                      f8_680nm: 0,
+                      clear_luminous: 0,
+                    } as any);
+                  }
+
+                  return paddedList.map((item, index) => {
+                    const isPlaceholder = item.id < 0;
+                    const { rgba: backgroundColor, isLight, r: displayR, g: displayG, b: displayB } = isPlaceholder
+                      ? { rgba: "rgba(0, 0, 0, 1)", isLight: false, r: 0, g: 0, b: 0 }
+                      : convertToRGB(item);
+
+                    // 1. 資料庫時間以 UTC (+00:00) 格式儲存實際的台北時間，故採用 UTC 時區解析以顯示正確的本地時間
+                    const localTime = isPlaceholder
+                      ? ""
+                      : new Date(item.created_at).toLocaleTimeString("zh-TW", {
+                        timeZone: "UTC",
+                        hour12: false,
+                      });
+
+                    return (
+                      <div
+                        key={item.id}
+                        className="group bg-black overflow-hidden relative flex flex-col transition-all duration-500 hover:scale-105 hover:z-10"
+                        onMouseEnter={() => !isPlaceholder && setHoveredItem(item)}
+                        onMouseLeave={() => setHoveredItem(null)}
+                      >
+                        {/* 顏色與 Overlay 區域 */}
+                        <div
+                          className="h-24 w-full transition-colors duration-500 relative flex items-center justify-center"
+                          style={{ backgroundColor }}
+                        >
+                          {/* Realtime NEW 標記 (只在非 placeholder 且是最新一筆時呈現) */}
+                          {index === 0 && !isPlaceholder && (
+                            <span className="absolute top-2 right-2 z-10 bg-white text-black text-[9px] uppercase font-bold px-1.5 py-0.5 rounded-full animate-pulse">
+                              NEW
+                            </span>
+                          )}
+
+                          {/* 顏色格內置時間顯示：深色背景用淺色字，淺色背景用深色字 */}
+                          {!isPlaceholder && (
+                            <span
+                              className={`absolute bottom-2 left-2 text-[9px] font-mono tracking-tighter transition-colors duration-300 font-medium ${isLight ? "text-neutral-950/70" : "text-neutral-100/70"
+                                }`}
+                            >
+                              {localTime}
+                            </span>
+                          )}
+                          {/* Hover 時呈現的詳細資訊 (只在非 placeholder 時呈現) - 顯示色彩資訊與生成按鈕 */}
+                          {!isPlaceholder && (() => {
+                            const desc = aiDescriptions[item.id];
+                            const isGenerating = generatingIds.has(item.id);
+
+                            return (
+                              <div className="absolute inset-0 bg-black/95 opacity-0 group-hover:opacity-100 transition-opacity duration-300 flex flex-col justify-center items-center p-2 font-mono text-[9px] text-neutral-400 space-y-0.5 select-none">
+                                <div className="text-[10px] text-neutral-300 font-semibold mb-0.5">DATA #{item.id}</div>
+                                <div className="flex justify-between w-full max-w-[80px]">
+                                  <span>Red:</span>
+                                  <span className="text-neutral-200 font-bold">{displayR}</span>
+                                </div>
+                                <div className="flex justify-between w-full max-w-[80px]">
+                                  <span>Green:</span>
+                                  <span className="text-neutral-200 font-bold">{displayG}</span>
+                                </div>
+                                <div className="flex justify-between w-full max-w-[80px]">
+                                  <span>Blue:</span>
+                                  <span className="text-neutral-200 font-bold">{displayB}</span>
+                                </div>
+                                <div className="text-[8px] text-neutral-500">{localTime}</div>
+
+                                {/* 生成按鈕或狀態 */}
+                                {isGenerating ? (
+                                  <span className="text-neutral-500 animate-pulse text-[8px] mt-1">感知中...</span>
+                                ) : !desc ? (
+                                  <button
+                                    onClick={(e) => {
+                                      e.stopPropagation();
+                                      generateDescriptionForRecord(item);
+                                    }}
+                                    className="px-2 py-0.5 bg-neutral-900 hover:bg-neutral-850 border border-neutral-800 text-neutral-300 hover:text-white rounded transition-all text-[8px] font-medium cursor-pointer mt-1"
+                                  >
+                                    生成文字
+                                  </button>
+                                ) : null}
+                              </div>
+                            );
+                          })()}
+                        </div>
+                      </div>
+                    );
+                  });
+                })()}
+              </div>
+            </div>
           </div>
-        )}
+        </div>
+        <ColorGui params={guiParams} onChange={setGuiParams} />
       </div>
-      <ColorGui params={guiParams} onChange={setGuiParams} />
     </main>
   );
 }
