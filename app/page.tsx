@@ -3,6 +3,7 @@
 import { useEffect, useState, useRef } from "react";
 import { supabase, aiSupabase } from "../lib/supabase";
 import { GoogleGenerativeAI } from "@google/generative-ai";
+import ColorGui, { GuiParams } from "../components/ColorGui";
 
 interface LightData {
   id: number;
@@ -58,7 +59,16 @@ function getCurrentTimePeriod(createdAt: string) {
   if (hour >= 14 && hour < 17) return "下午";
   if (hour >= 17 && hour < 19) return "黃昏";
   if (hour >= 19 && hour < 23) return "夜晚";
-  return "深夜"; 
+  return "深夜";
+}
+
+// 實作平滑 S 型對比度曲線 (Sigmoidal S-Curve)，保留亮暗兩端與中間調的柔和過渡
+function applyContrastCurve(x: number, contrast: number) {
+  if (x <= 0) return 0;
+  if (x >= 1) return 1;
+  const eps = 0.0001;
+  const clampedX = Math.max(eps, Math.min(1 - eps, x));
+  return 1 / (1 + Math.pow(clampedX / (1 - clampedX), -contrast));
 }
 
 export default function Home() {
@@ -66,6 +76,19 @@ export default function Home() {
   const [aiDescriptions, setAiDescriptions] = useState<Record<number, string>>({});
   const [generatingIds, setGeneratingIds] = useState<Set<number>>(new Set());
   const requestedIds = useRef<Set<number>>(new Set());
+
+  const [guiParams, setGuiParams] = useState<GuiParams>({
+    redWeight: 0.80,
+    greenWeight: 0.90,
+    blueWeight: 1.05,
+    brightness: 1.35,
+    saturation: 0.45,
+    contrast: 1.05,
+    shadowCrush: 0.00,
+    alphaScale: 1.40,
+    greenCorrectionThreshold: 150,
+    greenCorrectionSlope: 0.55,
+  });
 
   const fetchLightData = async () => {
     const { data, error } = await supabase
@@ -80,10 +103,10 @@ export default function Home() {
     }
 
     if (data) {
-      setDataList(data);
-
       // 從第二個 Supabase 資料庫讀取已經存在的 AI 詩句
       const recordIds = data.map((item) => item.id);
+      const descMap: Record<number, string> = {};
+
       if (recordIds.length > 0) {
         try {
           const { data: aiData, error: aiError } = await aiSupabase
@@ -92,19 +115,21 @@ export default function Home() {
             .in("record_id", recordIds);
 
           if (aiError) {
-             console.error("讀取 AI 描述失敗:", aiError);
+            console.error("讀取 AI 描述失敗:", aiError);
           } else if (aiData) {
-             // 轉換成鍵值對，更新到狀態中
-             const descMap: Record<number, string> = {};
-             aiData.forEach((row) => {
-               descMap[row.record_id] = row.description;
-             });
-             setAiDescriptions((prev) => ({ ...prev, ...descMap }));
+            // 轉換成鍵值對
+            aiData.forEach((row) => {
+              descMap[row.record_id] = row.description;
+            });
           }
         } catch (e) {
           console.error("讀取 AI 描述異常:", e);
         }
       }
+
+      // 先更新 AI 描述，再更新數據列表，確保 useEffect 觸發時已有完整的描述對照表
+      setAiDescriptions((prev) => ({ ...prev, ...descMap }));
+      setDataList(data);
     }
   };
 
@@ -120,6 +145,21 @@ export default function Home() {
     });
 
     try {
+      // 1. 先從 Supabase 檢查此 record_id 是否已有產生的描述（防止極短時間內的重複掛載與競態）
+      const { data: existingData, error: checkError } = await aiSupabase
+        .from("ai_descriptions")
+        .select("description")
+        .eq("record_id", item.id)
+        .maybeSingle();
+
+      if (!checkError && existingData?.description) {
+        setAiDescriptions((prev) => ({
+          ...prev,
+          [item.id]: existingData.description
+        }));
+        return; // 已有描述，直接返回
+      }
+
       const r = Math.round((item.f7_630nm + item.f8_680nm) / 2);
       const g = Math.round((item.f5_555nm + item.f6_590nm) / 2);
       const b = Math.round((item.f2_445nm + item.f3_480nm) / 2);
@@ -127,28 +167,28 @@ export default function Home() {
       const prompt = `輸入 [時段：${period}] rgb(${r}, ${g}, ${b}) ➔`;
 
       const model = genAI.getGenerativeModel(
-        { model: "gemini-3.1-flash-lite" }, 
+        { model: "gemini-3.1-flash-lite" },
         { apiVersion: 'v1' }
       );
 
       const result = await model.generateContent({
         contents: [
-          { 
-            role: 'user', 
-            parts: [{ text: `請嚴格遵守以下系統指令與人設，不需要回覆收到，直接在下一次對話中執行此任務：\n${finalSystemInstruction}` }] 
+          {
+            role: 'user',
+            parts: [{ text: `請嚴格遵守以下系統指令與人設，不需要回覆收到，直接在下一次對話中執行此任務：\n${finalSystemInstruction}` }]
           },
-          { 
-            role: 'model', 
-            parts: [{ text: "明白了，我已切換為當代藝術家角色，將嚴格遵守字數限制、拒絕造作詞彙與機器人格式，隨時準備為您輸入的時段與 RGB 數據進行轉譯。" }] 
+          {
+            role: 'model',
+            parts: [{ text: "明白了，我已切換為當代藝術家角色，將嚴格遵守字數限制、拒絕造作詞彙與機器人格式，隨時準備為您輸入的時段與 RGB 數據進行轉譯。" }]
           },
-          { 
-            role: 'user', 
-            parts: [{ text: prompt }] 
+          {
+            role: 'user',
+            parts: [{ text: prompt }]
           }
         ],
         generationConfig: { maxOutputTokens: 60 }
       });
-      
+
       const response = await result.response;
       const text = response.text().trim();
 
@@ -164,12 +204,16 @@ export default function Home() {
               model_name: "gemini-3.1-flash-lite",
             });
           if (insertError) {
-            console.error(`[aiSupabase] 寫入 AI 描述失敗 (ID: ${item.id}):`, {
-              message: insertError.message,
-              details: insertError.details,
-              hint: insertError.hint,
-              code: insertError.code
-            });
+            if (insertError.code === '23505') {
+              console.log(`[aiSupabase] AI 描述已由其他請求成功建立 (ID: ${item.id})`);
+            } else {
+              console.error(`[aiSupabase] 寫入 AI 描述失敗 (ID: ${item.id}):`, {
+                message: insertError.message,
+                details: insertError.details,
+                hint: insertError.hint,
+                code: insertError.code
+              });
+            }
           } else {
             console.log(`[aiSupabase] 成功寫入 AI 描述 (ID: ${item.id})`);
           }
@@ -230,17 +274,67 @@ export default function Home() {
   }, [dataList]);
 
   const convertToRGB = (item: LightData) => {
-    const r_raw = (item.f7_630nm + item.f8_680nm) / 2;
-    const g_raw = (item.f5_555nm + item.f6_590nm) / 2;
-    const b_raw = (item.f2_445nm + item.f3_480nm) / 2;
+    // Calculate average intensity across all 8 spectral bands
+    const sensor_avg = (
+      item.f1_415nm +
+      item.f2_445nm +
+      item.f3_480nm +
+      item.f4_515nm +
+      item.f5_555nm +
+      item.f6_590nm +
+      item.f7_630nm +
+      item.f8_680nm
+    ) / 8;
+
+    // Calculate green correction factor based on threshold and slope
+    let g_correction = 1.0;
+    if (sensor_avg < guiParams.greenCorrectionThreshold && guiParams.greenCorrectionThreshold > 0) {
+      const deficit = (guiParams.greenCorrectionThreshold - sensor_avg) / guiParams.greenCorrectionThreshold;
+      g_correction = Math.max(0, 1.0 - guiParams.greenCorrectionSlope * deficit);
+    }
+
+    // 1. Apply channel weights (with green correction applied to green channel)
+    const r_raw = ((item.f7_630nm + item.f8_680nm) / 2) * guiParams.redWeight;
+    const g_raw = ((item.f5_555nm + item.f6_590nm) / 2) * guiParams.greenWeight * g_correction;
+    const b_raw = ((item.f2_445nm + item.f3_480nm) / 2) * guiParams.blueWeight;
 
     const maxRaw = Math.max(r_raw, g_raw, b_raw, 1);
 
-    const r = Math.min(Math.round((r_raw / maxRaw) * 255), 255);
-    const g = Math.min(Math.round((g_raw / maxRaw) * 255), 255);
-    const b = Math.min(Math.round((b_raw / maxRaw) * 255), 255);
+    // Calculate intensity normalized to 0-1000 range, applying shadowCrush power curve
+    const intensity = Math.max(0, Math.min(item.clear_luminous / 1000, 1));
+    // Map shadowCrush slider value (0-1) to an exponent (1.0 to 3.0)
+    const exponent = 1.0 + guiParams.shadowCrush * 2.0;
+    const crushedIntensity = Math.pow(intensity, exponent);
 
-    const alpha = Math.min(item.clear_luminous / 2000 + 0.2, 1);
+    // 2. Normalize and scale by brightness and crushedIntensity (making color darker in low light)
+    let r = Math.min(Math.round((r_raw / maxRaw) * 255 * guiParams.brightness * crushedIntensity), 255);
+    let g = Math.min(Math.round((g_raw / maxRaw) * 255 * guiParams.brightness * crushedIntensity), 255);
+    let b = Math.min(Math.round((b_raw / maxRaw) * 255 * guiParams.brightness * crushedIntensity), 255);
+
+    // 3. Apply saturation adjustment
+    // Y = 0.299 * R + 0.587 * G + 0.114 * B
+    const luminance = 0.299 * r + 0.587 * g + 0.114 * b;
+    r = Math.max(0, Math.min(Math.round(luminance + guiParams.saturation * (r - luminance)), 255));
+    g = Math.max(0, Math.min(Math.round(luminance + guiParams.saturation * (g - luminance)), 255));
+    b = Math.max(0, Math.min(Math.round(luminance + guiParams.saturation * (b - luminance)), 255));
+
+    // 3.5. Apply contrast adjustment using smooth S-curve
+    let r_norm = r / 255;
+    let g_norm = g / 255;
+    let b_norm = b / 255;
+
+    r_norm = applyContrastCurve(r_norm, guiParams.contrast);
+    g_norm = applyContrastCurve(g_norm, guiParams.contrast);
+    b_norm = applyContrastCurve(b_norm, guiParams.contrast);
+
+    r = Math.round(r_norm * 255);
+    g = Math.round(g_norm * 255);
+    b = Math.round(b_norm * 255);
+
+    // 4. Apply alpha scale and contrast using smooth S-curve
+    const baseAlpha = crushedIntensity;
+    let alpha = Math.max(0, Math.min(baseAlpha * guiParams.alphaScale, 1));
+    alpha = applyContrastCurve(alpha, guiParams.contrast);
 
     return `rgba(${r}, ${g}, ${b}, ${alpha})`;
   };
@@ -334,6 +428,7 @@ export default function Home() {
           </div>
         )}
       </div>
+      <ColorGui params={guiParams} onChange={setGuiParams} />
     </main>
   );
 }
