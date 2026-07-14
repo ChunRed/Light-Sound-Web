@@ -4,6 +4,7 @@ import { useEffect, useState, useRef } from "react";
 import { supabase, aiSupabase } from "../lib/supabase";
 import { GoogleGenerativeAI } from "@google/generative-ai";
 import ColorGui, { GuiParams } from "../components/ColorGui";
+import LatestCalibratedColor from "../components/LatestCalibratedColor";
 
 interface LightData {
   id: number;
@@ -565,6 +566,7 @@ export default function Home() {
             </div>
           </div>
         </div>
+        <LatestCalibratedColor guiParams={guiParams} />
         <ColorGui params={guiParams} onChange={setGuiParams} />
       </div>
     </main>
