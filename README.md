@@ -34,3 +34,11 @@ You can check out [the Next.js GitHub repository](https://github.com/vercel/next
 The easiest way to deploy your Next.js app is to use the [Vercel Platform](https://vercel.com/new?utm_medium=default-template&filter=next.js&utm_source=create-next-app&utm_campaign=create-next-app-readme) from the creators of Next.js.
 
 Check out our [Next.js deployment documentation](https://nextjs.org/docs/app/building-your-application/deploying) for more details.
+
+## Database Emit Data Fields
+
+以下是預備發送至 Supabase 的資料欄位說明：
+- `sRGB` 是顏色資料：`[ r, g, b ]`
+- `Wavelength` 是波長資料：`[ f1, f2, f3, f4, f5, f6, f7, f8 ]`
+- `Text` 是生成文字
+

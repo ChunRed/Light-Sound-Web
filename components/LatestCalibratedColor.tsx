@@ -1,7 +1,7 @@
 "use client";
 
 import { useEffect, useState } from "react";
-import { supabase } from "../lib/supabase";
+import { supabase, aiSupabase } from "../lib/supabase";
 import { GuiParams } from "./ColorGui";
 import DatabaseEmit from "./DatabaseEmit";
 
@@ -95,6 +95,7 @@ function convertLightToRGB(item: LightData, guiParams: GuiParams) {
 
 export default function LatestCalibratedColor({ guiParams }: LatestCalibratedColorProps) {
   const [latestData, setLatestData] = useState<LightData | null>(null);
+  const [aiDescription, setAiDescription] = useState<string | null>(null);
 
   const fetchLatestRecord = async () => {
     try {
@@ -112,6 +113,51 @@ export default function LatestCalibratedColor({ guiParams }: LatestCalibratedCol
       console.error("[LatestCalibratedColor] Fetch exception:", e);
     }
   };
+
+  const fetchAiDescription = async (recordId: number) => {
+    try {
+      const { data, error } = await aiSupabase
+        .from("ai_descriptions")
+        .select("description")
+        .eq("record_id", recordId)
+        .maybeSingle();
+
+      if (!error && data?.description) {
+        setAiDescription(data.description);
+      } else {
+        setAiDescription(null);
+      }
+    } catch (e) {
+      console.error("[LatestCalibratedColor] AI Fetch exception:", e);
+    }
+  };
+
+  useEffect(() => {
+    if (latestData) {
+      fetchAiDescription(latestData.id);
+
+      // Polling check (in case AI description generation has a short lag)
+      let checkCount = 0;
+      const interval = setInterval(async () => {
+        checkCount++;
+        if (checkCount > 5) {
+          clearInterval(interval);
+          return;
+        }
+        const { data } = await aiSupabase
+          .from("ai_descriptions")
+          .select("description")
+          .eq("record_id", latestData.id)
+          .maybeSingle();
+        if (data?.description) {
+          setAiDescription(data.description);
+          clearInterval(interval);
+        }
+      }, 3000);
+
+      return () => clearInterval(interval);
+    }
+  }, [latestData?.id]);
 
   useEffect(() => {
     fetchLatestRecord();
@@ -207,7 +253,7 @@ export default function LatestCalibratedColor({ guiParams }: LatestCalibratedCol
         </div>
       </div>
 
-      <DatabaseEmit sRGB={sRGB} Wavelength={Wavelength} />
+      <DatabaseEmit sRGB={sRGB} Wavelength={Wavelength} Text={aiDescription} />
     </div>
   );
 }
