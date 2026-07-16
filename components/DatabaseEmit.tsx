@@ -1,6 +1,7 @@
 "use client";
 
 import { useEffect } from "react";
+import SoundGenerator from "./SoundGenerator";
 
 interface DatabaseEmitProps {
   sRGB: number[];
@@ -28,5 +29,6 @@ export default function DatabaseEmit({ sRGB, Wavelength, Text }: DatabaseEmitPro
 
 
 
-  return null;
+  // 以此三種資料即時生成並串流播放 Lyria 音樂（此網頁會顯示在裝置上讓其直接播放）。
+  return <SoundGenerator sRGB={sRGB} Wavelength={Wavelength} Text={Text} />;
 }
