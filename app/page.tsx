@@ -1,7 +1,7 @@
 "use client";
 
 import { useEffect, useState, useRef } from "react";
-import { supabase, aiSupabase } from "../lib/supabase";
+import { supabase } from "../lib/supabase";
 import { GoogleGenerativeAI } from "@google/generative-ai";
 import ColorGui, { GuiParams } from "../components/ColorGui";
 import LatestCalibratedColor from "../components/LatestCalibratedColor";
@@ -105,32 +105,6 @@ export default function Home() {
     }
 
     if (data) {
-      // 從第二個 Supabase 資料庫讀取已經存在的 AI 詩句
-      const recordIds = data.map((item) => item.id);
-      const descMap: Record<number, string> = {};
-
-      if (recordIds.length > 0) {
-        try {
-          const { data: aiData, error: aiError } = await aiSupabase
-            .from("ai_descriptions")
-            .select("record_id, description")
-            .in("record_id", recordIds);
-
-          if (aiError) {
-            console.error("讀取 AI 描述失敗:", aiError);
-          } else if (aiData) {
-            // 轉換成鍵值對
-            aiData.forEach((row) => {
-              descMap[row.record_id] = row.description;
-            });
-          }
-        } catch (e) {
-          console.error("讀取 AI 描述異常:", e);
-        }
-      }
-
-      // 先更新 AI 描述，再更新數據列表，確保 useEffect 觸發時已有完整的描述對照表
-      setAiDescriptions((prev) => ({ ...prev, ...descMap }));
       setDataList(data);
     }
   };
@@ -147,21 +121,6 @@ export default function Home() {
     });
 
     try {
-      // 1. 先從 Supabase 檢查此 record_id 是否已有產生的描述（防止極短時間內的重複掛載與競態）
-      const { data: existingData, error: checkError } = await aiSupabase
-        .from("ai_descriptions")
-        .select("description")
-        .eq("record_id", item.id)
-        .maybeSingle();
-
-      if (!checkError && existingData?.description) {
-        setAiDescriptions((prev) => ({
-          ...prev,
-          [item.id]: existingData.description
-        }));
-        return; // 已有描述，直接返回
-      }
-
       const r = Math.round((item.f7_630nm + item.f8_680nm) / 2);
       const g = Math.round((item.f5_555nm + item.f6_590nm) / 2);
       const b = Math.round((item.f2_445nm + item.f3_480nm) / 2);
@@ -194,36 +153,8 @@ export default function Home() {
       const response = await result.response;
       const text = response.text().trim();
 
-      // 寫入另一個專案的 Supabase 資料庫 (非同步執行，不阻礙前端 UI 更新)
-      (async () => {
-        try {
-          const { error: insertError } = await aiSupabase
-            .from("ai_descriptions")
-            .insert({
-              record_id: item.id,
-              description: text,
-              prompt: prompt,
-              model_name: "gemini-3.1-flash-lite",
-            });
-          if (insertError) {
-            if (insertError.code === '23505') {
-              console.log(`[aiSupabase] AI 描述已由其他請求成功建立 (ID: ${item.id})`);
-            } else {
-              console.error(`[aiSupabase] 寫入 AI 描述失敗 (ID: ${item.id}):`, {
-                message: insertError.message,
-                details: insertError.details,
-                hint: insertError.hint,
-                code: insertError.code
-              });
-            }
-          } else {
-            console.log(`[aiSupabase] 成功寫入 AI 描述 (ID: ${item.id})`);
-          }
-        } catch (err) {
-          console.error(`[aiSupabase] 寫入 AI 描述異常 (ID: ${item.id}):`, err);
-        }
-      })();
-
+      // 詩句只保存在前端記憶體（aiDescriptions），透過 props 傳給下游元件；
+      // 不再寫入外部 Supabase 表。
       setAiDescriptions((prev) => ({
         ...prev,
         [item.id]: text
@@ -566,7 +497,10 @@ export default function Home() {
             </div>
           </div>
         </div>
-        <LatestCalibratedColor guiParams={guiParams} />
+        <LatestCalibratedColor
+          guiParams={guiParams}
+          aiText={dataList[0] ? aiDescriptions[dataList[0].id] ?? null : null}
+        />
         <ColorGui params={guiParams} onChange={setGuiParams} />
       </div>
     </main>

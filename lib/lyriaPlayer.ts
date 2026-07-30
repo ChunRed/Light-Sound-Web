@@ -29,10 +29,11 @@ const MODEL_ID = "models/lyria-realtime-exp";
 const LYRIA_SAMPLE_RATE = 48000;
 const LYRIA_CHANNELS = 2;
 
-// 音訊來源旗標（對齊 neurips2026 app.py 的 source=mock / real_lyria）：
-// - real_lyria：有 GEMINI_API_KEY 且未強制 mock → 真連 Lyria。
-// - mock：無金鑰或強制 mock → 瀏覽器端合成感測驅動正弦波（離線亦可測整條管線）。
-export type AudioSource = "mock" | "real_lyria";
+// 音訊來源旗標：
+// - real_lyria：前端有 GEMINI_API_KEY 且未強制 mock → 前端直連 Lyria（金鑰會 inline 進 client）。
+// - proxy     ：設定了 proxyUrl → 連自架的 WebSocket proxy（金鑰只在後端，不外洩）。
+// - mock      ：無金鑰、無 proxy 或強制 mock → 瀏覽器端合成感測驅動正弦波（離線亦可測整條管線）。
+export type AudioSource = "mock" | "real_lyria" | "proxy";
 
 export type PlayerStatus =
   | "idle"
@@ -76,6 +77,9 @@ export class LyriaPlayer {
   private session: LiveMusicSession | null = null;
   private audioCtx: AudioContext | null = null;
   private gain: GainNode | null = null;
+
+  // proxy 模式：連自架 WS proxy（金鑰在後端）。
+  private proxySocket: WebSocket | null = null;
 
   // mock 合成音訊（無金鑰時的離線測試路徑，對齊 neurips2026 MockPCMSource）。
   private osc: OscillatorNode | null = null;
@@ -131,10 +135,81 @@ export class LyriaPlayer {
   /** 更新最新感測資料並即時套用（Lyria session 或 mock 合成皆會反應）。 */
   async updateSensors(snapshot: SensorSnapshot) {
     this.latest = snapshot;
-    if (this.session) {
+    await this.reapply();
+  }
+
+  /**
+   * 只更新「light data」（顏色 + 波長），即時重算並下發 Lyria 參數與冷/暖權重。
+   * 與詩詞 prompt 更新為獨立路徑，不互相等待。
+   */
+  async updateSensorData(sRGB: number[], wavelength: number[]) {
+    const prev = this.latest;
+    this.latest = {
+      sRGB,
+      wavelength,
+      text: prev?.text ?? null,
+    };
+    await this.reapply();
+  }
+
+  /**
+   * 只更新「詩詞 prompt」，即時重算並下發權重提示詞。
+   * 與 light data 更新為獨立路徑，不互相等待。
+   */
+  async updatePoem(text: string | null) {
+    const prev = this.latest;
+    this.latest = {
+      sRGB: prev?.sRGB ?? [0, 0, 0],
+      wavelength: prev?.wavelength ?? [],
+      text,
+    };
+    await this.reapply();
+  }
+
+  // 依當前 latest 快照即時套用（session/proxy 走參數+提示詞、mock 走頻率/音量）。
+  private async reapply() {
+    const snapshot = this.latest;
+    if (!snapshot) return;
+    if (this.source === "proxy") {
+      this.applyMappingViaProxy(snapshot);
+    } else if (this.session) {
       await this.applyMapping(snapshot);
     } else if (this.source === "mock" && this.isRunning()) {
       this.applyMockMapping(snapshot);
+    }
+  }
+
+  // proxy 模式：前端算好 mapping，透過 WS 把 prompts/config 送給後端 proxy 下發。
+  private applyMappingViaProxy(snapshot: SensorSnapshot) {
+    const mapping = mapDataToLyria(
+      snapshot.sRGB,
+      snapshot.wavelength,
+      snapshot.text
+    );
+    this.cb.onMapping?.(mapping);
+    const ws = this.proxySocket;
+    if (!ws || ws.readyState !== WebSocket.OPEN) return;
+    try {
+      ws.send(
+        JSON.stringify({
+          type: "prompts",
+          weightedPrompts: normalizePrompts(mapping.prompts),
+        })
+      );
+      ws.send(
+        JSON.stringify({
+          type: "config",
+          musicGenerationConfig: {
+            brightness: mapping.params.brightness,
+            density: mapping.params.density,
+            guidance: mapping.params.guidance,
+            bpm: mapping.params.bpm,
+            temperature: mapping.params.temperature,
+          },
+        })
+      );
+    } catch {
+      // 送出失敗不致命（socket 可能剛關閉）。
     }
   }
 
@@ -168,13 +243,16 @@ export class LyriaPlayer {
 
   /**
    * 決定音訊來源並開始播放：
-   * - 有 apiKey 且 forceMock=false → 真連 Lyria (source=real_lyria)
-   * - 否則 → 瀏覽器合成正弦波 (source=mock)，離線亦可測整條映射管線
+   * - forceMock=true                    → mock 合成
+   * - 否則 proxyUrl 有設                → 連自架 WS proxy（金鑰在後端，前端不需金鑰）
+   * - 否則 apiKey 有值                  → 前端直連 Lyria (real_lyria)
+   * - 否則                              → mock 合成（離線亦可測整條映射管線）
    */
   async start(
     apiKey: string,
     snapshot: SensorSnapshot,
-    forceMock = false
+    forceMock = false,
+    proxyUrl = ""
   ) {
     if (this.isRunning()) return;
     this.latest = snapshot;
@@ -182,8 +260,9 @@ export class LyriaPlayer {
     this.bytesReceived = 0;
     this.chunksReceived = 0;
 
-    const useReal = !!apiKey && !forceMock;
-    this.source = useReal ? "real_lyria" : "mock";
+    const useProxy = !forceMock && !!proxyUrl;
+    const useReal = !forceMock && !useProxy && !!apiKey;
+    this.source = useProxy ? "proxy" : useReal ? "real_lyria" : "mock";
     this.setStatus("connecting");
 
     // AudioContext 以 48kHz 建立，與 Lyria 輸出一致避免重採樣失真。
@@ -198,8 +277,13 @@ export class LyriaPlayer {
     if (this.audioCtx.state === "suspended") await this.audioCtx.resume();
     this.nextStartTime = 0;
 
-    if (!useReal) {
+    if (this.source === "mock") {
       this.startMock(snapshot);
+      return;
+    }
+
+    if (this.source === "proxy") {
+      this.startProxy(proxyUrl, snapshot);
       return;
     }
 
@@ -230,6 +314,56 @@ export class LyriaPlayer {
     } catch (e) {
       this.errorMessage =
         (e instanceof Error ? e.message : String(e)) || "無法建立 Lyria session";
+      this.setStatus("error");
+      this.cleanupAudio();
+    }
+  }
+
+  // --- proxy 路徑：連自架 WS proxy，金鑰在後端，前端不需金鑰 ---
+  private startProxy(proxyUrl: string, snapshot: SensorSnapshot) {
+    try {
+      const ws = new WebSocket(proxyUrl);
+      this.proxySocket = ws;
+      ws.onopen = () => {
+        // 建立 session，並立即下發當前 mapping（prompts + config）。
+        ws.send(JSON.stringify({ type: "start" }));
+        this.applyMappingViaProxy(snapshot);
+      };
+      ws.onmessage = (ev) => {
+        let msg: unknown;
+        try {
+          msg = JSON.parse(typeof ev.data === "string" ? ev.data : "");
+        } catch {
+          return;
+        }
+        const m = msg as { type?: string; data?: string; status?: string; message?: string };
+        if (m.type === "audio" && m.data) {
+          const bytes = base64ToBytes(m.data);
+          this.bytesReceived += bytes.byteLength;
+          this.chunksReceived += 1;
+          this.scheduleChunk(bytes);
+          this.emitStats();
+        } else if (m.type === "status") {
+          if (m.status === "error") {
+            this.errorMessage = m.message || "proxy 連線錯誤";
+            this.setStatus("error");
+          }
+          // playing/idle 等狀態以本地音訊排程為準，不強制覆寫。
+        }
+      };
+      ws.onerror = () => {
+        this.errorMessage = "無法連上音樂串流服務（proxy）";
+        this.setStatus("error");
+      };
+      ws.onclose = () => {
+        if (this.status !== "error" && this.status !== "idle") {
+          this.setStatus("idle");
+        }
+      };
+      this.setStatus("buffering");
+    } catch (e) {
+      this.errorMessage =
+        (e instanceof Error ? e.message : String(e)) || "無法連上 proxy";
       this.setStatus("error");
       this.cleanupAudio();
     }
@@ -358,6 +492,17 @@ export class LyriaPlayer {
         this.session.close?.();
       } catch {}
       this.session = null;
+    }
+    if (this.proxySocket) {
+      try {
+        if (this.proxySocket.readyState === WebSocket.OPEN) {
+          this.proxySocket.send(JSON.stringify({ type: "stop" }));
+        }
+      } catch {}
+      try {
+        this.proxySocket.close();
+      } catch {}
+      this.proxySocket = null;
     }
     this.ai = null;
     this.cleanupAudio();

@@ -6,7 +6,8 @@
     "dev": "next dev --webpack",
     "build": "next build --webpack",
     "start": "next start",
-    "lint": "eslint"
+    "lint": "eslint",
+    "proxy": "node server/lyria-proxy.mjs"
   },
   "dependencies": {
     "@google/genai": "^2.11.0",

@@ -13,8 +13,12 @@ interface SoundGeneratorProps {
 const GEMINI_API_KEY = process.env.NEXT_PUBLIC_GEMINI_API_KEY || "";
 // 對齊 neurips2026 的 APP_FORCE_MOCK：即使有金鑰也強制走 mock 合成音訊。
 const FORCE_MOCK = process.env.NEXT_PUBLIC_FORCE_MOCK === "1";
-// 判定實際會用的來源：有金鑰且未強制 mock → real_lyria，否則 mock。
-const WILL_USE_MOCK = !GEMINI_API_KEY || FORCE_MOCK;
+// 自架 WebSocket proxy 位址（金鑰在後端、前端不需金鑰）。設了就優先走 proxy。
+const PROXY_URL = process.env.NEXT_PUBLIC_LYRIA_PROXY_URL || "";
+// 判定實際會用的來源：強制 mock → mock；否則有 proxy → proxy；否則有金鑰 → real_lyria；否則 mock。
+const WILL_USE_PROXY = !FORCE_MOCK && !!PROXY_URL;
+const WILL_USE_REAL = !FORCE_MOCK && !WILL_USE_PROXY && !!GEMINI_API_KEY;
+const WILL_USE_MOCK = !WILL_USE_PROXY && !WILL_USE_REAL;
 
 const STATUS_LABEL: Record<string, string> = {
   idle: "待機",
@@ -38,7 +42,7 @@ export default function SoundGenerator({
   const playerRef = useRef<LyriaPlayer | null>(null);
   const [stats, setStats] = useState<PlayerStats>({
     status: "idle",
-    source: WILL_USE_MOCK ? "mock" : "real_lyria",
+    source: WILL_USE_PROXY ? "proxy" : WILL_USE_MOCK ? "mock" : "real_lyria",
     bytesReceived: 0,
     chunksReceived: 0,
     queuedSeconds: 0,
@@ -63,14 +67,23 @@ export default function SoundGenerator({
     };
   }, []);
 
-  // 感測資料變動 -> 即時套用到正在播放的 session。
+  // light data（顏色 + 波長）變動 -> 只即時更新 Lyria 參數與冷/暖權重。
+  // 與詩詞 prompt 為兩條獨立更新路徑，各自即時套用、互不等待。
   useEffect(() => {
     const p = playerRef.current;
     if (p && p.isRunning()) {
-      p.updateSensors({ sRGB, wavelength: Wavelength, text: Text });
+      p.updateSensorData(sRGB, Wavelength);
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [sRGB.join(","), Wavelength.join(","), Text]);
+  }, [sRGB.join(","), Wavelength.join(",")]);
+
+  // 詩詞變動 -> 只即時更新詩詞 prompt。
+  useEffect(() => {
+    const p = playerRef.current;
+    if (p && p.isRunning()) {
+      p.updatePoem(Text);
+    }
+  }, [Text]);
 
   const running =
     stats.status === "connecting" ||
@@ -90,7 +103,8 @@ export default function SoundGenerator({
           wavelength: Wavelength,
           text: Text,
         },
-        FORCE_MOCK
+        FORCE_MOCK,
+        PROXY_URL
       );
     }
   };
@@ -127,10 +141,16 @@ export default function SoundGenerator({
                 className={`ml-2 px-1.5 py-0.5 rounded text-[9px] font-bold ${
                   stats.source === "real_lyria"
                     ? "bg-emerald-950/60 text-emerald-300"
+                    : stats.source === "proxy"
+                    ? "bg-violet-950/60 text-violet-300"
                     : "bg-sky-950/60 text-sky-300"
                 }`}
               >
-                {stats.source === "real_lyria" ? "real_lyria" : "mock 合成"}
+                {stats.source === "real_lyria"
+                  ? "real_lyria"
+                  : stats.source === "proxy"
+                  ? "串流服務 (proxy)"
+                  : "mock 合成"}
               </span>
             </div>
           </div>
@@ -195,9 +215,26 @@ export default function SoundGenerator({
       {/* 加權提示詞 */}
       <div className="space-y-2 mb-5">
         <div className="text-[10px] text-neutral-500 uppercase tracking-widest">當前音樂提示詞</div>
+
+        {/* 詩詞原文欄位（併入 prompt 的當前詩句，完整顯示不截斷）*/}
+        <div className="flex items-start gap-2 px-2.5 py-2 rounded-lg bg-purple-950/20 border border-purple-900/40">
+          <span className="text-[9px] px-1.5 py-0.5 rounded font-bold flex-shrink-0 bg-purple-950/60 text-purple-300">
+            詩詞原文
+          </span>
+          {Text ? (
+            <p className="text-purple-200/90 text-[11px] leading-relaxed italic flex-1 min-w-0">
+              「{Text}」
+            </p>
+          ) : (
+            <p className="text-neutral-600 text-[10px] flex-1 min-w-0">
+              尚無生成詩句，僅以色彩與波長調音
+            </p>
+          )}
+        </div>
+
         {shown.prompts.map((p, i) => {
           const pct = Math.max(0, Math.min(100, p.weight * 100));
-          const tag = i === 0 ? "冷" : i === 1 ? "暖" : "意境";
+          const tag = i === 0 ? "冷" : i === 1 ? "暖" : "詩句";
           return (
             <div key={`${i}-${p.text}`} className="flex items-center gap-2">
               <span

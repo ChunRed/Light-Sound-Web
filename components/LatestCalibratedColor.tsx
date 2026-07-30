@@ -1,7 +1,7 @@
 "use client";
 
 import { useEffect, useState } from "react";
-import { supabase, aiSupabase } from "../lib/supabase";
+import { supabase } from "../lib/supabase";
 import { GuiParams } from "./ColorGui";
 import DatabaseEmit from "./DatabaseEmit";
 
@@ -21,6 +21,9 @@ interface LightData {
 
 interface LatestCalibratedColorProps {
   guiParams: GuiParams;
+  // 詩句由主頁（app/page.tsx）以記憶體 state 生成後，透過 props 直接下傳；
+  // 對應「當前顯示的最新一筆」。不再經由 Supabase ai_descriptions 表。
+  aiText: string | null;
 }
 
 function applyContrastCurve(x: number, contrast: number) {
@@ -93,9 +96,8 @@ function convertLightToRGB(item: LightData, guiParams: GuiParams) {
   };
 }
 
-export default function LatestCalibratedColor({ guiParams }: LatestCalibratedColorProps) {
+export default function LatestCalibratedColor({ guiParams, aiText }: LatestCalibratedColorProps) {
   const [latestData, setLatestData] = useState<LightData | null>(null);
-  const [aiDescription, setAiDescription] = useState<string | null>(null);
 
   const fetchLatestRecord = async () => {
     try {
@@ -114,52 +116,8 @@ export default function LatestCalibratedColor({ guiParams }: LatestCalibratedCol
     }
   };
 
-  const fetchAiDescription = async (recordId: number) => {
-    try {
-      const { data, error } = await aiSupabase
-        .from("ai_descriptions")
-        .select("description")
-        .eq("record_id", recordId)
-        .maybeSingle();
-
-      if (!error && data?.description) {
-        setAiDescription(data.description);
-      } else {
-        setAiDescription(null);
-      }
-    } catch (e) {
-      console.error("[LatestCalibratedColor] AI Fetch exception:", e);
-    }
-  };
-
   useEffect(() => {
-    if (latestData) {
-      fetchAiDescription(latestData.id);
-
-      // Polling check (in case AI description generation has a short lag)
-      let checkCount = 0;
-      const interval = setInterval(async () => {
-        checkCount++;
-        if (checkCount > 5) {
-          clearInterval(interval);
-          return;
-        }
-        const { data } = await aiSupabase
-          .from("ai_descriptions")
-          .select("description")
-          .eq("record_id", latestData.id)
-          .maybeSingle();
-        if (data?.description) {
-          setAiDescription(data.description);
-          clearInterval(interval);
-        }
-      }, 3000);
-
-      return () => clearInterval(interval);
-    }
-  }, [latestData?.id]);
-
-  useEffect(() => {
+    // eslint-disable-next-line react-hooks/set-state-in-effect
     fetchLatestRecord();
 
     const channel = supabase
@@ -253,7 +211,7 @@ export default function LatestCalibratedColor({ guiParams }: LatestCalibratedCol
         </div>
       </div>
 
-      <DatabaseEmit sRGB={sRGB} Wavelength={Wavelength} Text={aiDescription} />
+      <DatabaseEmit sRGB={sRGB} Wavelength={Wavelength} Text={aiText} />
     </div>
   );
 }

@@ -14,7 +14,7 @@
 //   頻譜熵 (spectral entropy)  -> guidance   (熵高 -> guidance 低 -> 更發散)
 //   紅/暖 vs 藍/冷 主導         -> bpm        (暖色偏慢、冷色偏快，落在 chill 區間)
 //   F1-F8 冷簇 / 暖簇能量比     -> 兩條加權 prompt (冷 ethereal / 暖 lo-fi)
-//   Text (詩句)               -> 一條情緒 prompt (權重固定，含蓄引導音色)
+//   Text (詩句)               -> 一條 prompt：詩句原文 (直接讓 Lyria 讀到詩詞)
 
 export interface LyriaMusicParams {
   brightness: number; // 0..1
@@ -144,14 +144,12 @@ export function mapDataToLyria(
     { text: "warm analog lo-fi soulful groove, cozy and mellow", weight: round4(warmW) },
   ];
 
-  // Text（AI 詩句）作為含蓄的情緒 prompt。詩句本身是中文意象，Lyria 對氛圍詞
-  // 敏感，故以固定中等權重併入，讓音色貼合當下光影的心理投射。
+  // Text（AI 詩句）併入提示詞：直接把「當前詩句原文」當成一條 prompt，
+  // 讓 Lyria 直接讀到詩詞本身。詩句本身是中文意象，Lyria 對氛圍詞敏感，
+  // 故以中高權重併入，讓音色貼合當下光影的心理投射。
   const mood = (text ?? "").trim();
   if (mood.length > 0) {
-    prompts.push({
-      text: `${mood}, cinematic emotional atmosphere`,
-      weight: 0.55,
-    });
+    prompts.push({ text: mood, weight: 0.6 });
   }
 
   return {

@@ -33,24 +33,31 @@ npx eslint <files>          # lint（build 會強制 lint，any / 未用變數�
 
 - **本機建置會因缺 Supabase 環境變數而 prerender fail**（`supabaseUrl is required`）——這是**既有**行為，非新程式碼造成。本機驗證請建 `.env.local`（已被 .gitignore 忽略）填佔位值即可通過（見第 4 節）。Vercel 上有真實環境變數故正常建置。
 
-## 2.5 音樂生成頁與 localhost 測試（重要）
+## 2.5 音樂生成與 localhost 測試（重要）
 
 ### 頁面
-- **`/music-generation`**（`app/music-generation/page.tsx`）：**deploy 上線頁**。讀真實 Supabase 最新一筆光感測資料（與主頁同色彩轉換 + realtime 訂閱 + 抓對應 AI 詩句），交給 `SoundGenerator` 生成/播放。裝置直接開此頁 → 點「開始生成聲音」→ 持續播放，感測更新即時重新調音。無資料時顯示「讀取最新光感測資料中…」。
-- 主頁 `/` 仍是色彩矩陣視覺化（既有），聲音元件同時掛在主頁的 `DatabaseEmit` 下與此獨立頁。
+- 聲音生成掛在**主頁 `/`** 最下方：`app/page.tsx` → `<LatestCalibratedColor>` → `<DatabaseEmit>` → `<SoundGenerator>`。裝置直接開主頁 → 點「開始生成聲音」→ 持續播放，感測更新即時重新調音。
+- （已移除）舊的獨立頁 `/music-generation` 已刪除；不再需要。
+
+### 詩句（Text）資料流：純前端記憶體，不經資料庫
+- 主頁對最新一筆呼叫 Gemini 生成繁中詩句，**只存在 React state `aiDescriptions`（記憶體）**。
+- 詩句透過 **props** 一路下傳：`app/page.tsx`（`aiDescriptions[dataList[0].id]`）→ `LatestCalibratedColor`（`aiText`）→ `DatabaseEmit`（`Text`）→ `SoundGenerator`。
+- **不再使用 Supabase `ai_descriptions` 表 / `aiSupabase` client**（該表原本不存在於專案，導致讀寫 `PGRST205` 失敗、底部 block 永遠拿不到詩句）。詩句為 session 內記憶體，重整頁面會重新生成。
 
 ### 兩種音訊來源（對齊 neurips2026 的 source=mock / real_lyria）
 - **mock 合成**（無金鑰即可）：`SoundGenerator` 在**無 `NEXT_PUBLIC_GEMINI_API_KEY`** 或 **`NEXT_PUBLIC_FORCE_MOCK=1`** 時，用瀏覽器 Web Audio 合成一個「感測驅動的正弦波」（頻率隨 brightness、音量隨 density），**不需金鑰、離線也能出聲**，用來驗證整條「光→聲」映射管線與 UI。等同 neurips2026 的 `APP_FORCE_MOCK=1`。
 - **real_lyria**（要真音樂）：設定有效 `NEXT_PUBLIC_GEMINI_API_KEY`（且未強制 mock）→ 真連 Google Lyria RealTime 串流生成。金鑰於 [AI Studio](https://aistudio.google.com/apikey) 取得（支援免費金鑰）。
+
+### light data 與詩句為兩條獨立即時更新路徑
+- `SoundGenerator` 以兩個獨立 effect 監聽：`sRGB/Wavelength` 變 → `LyriaPlayer.updateSensorData()`（只重算參數 + 冷/暖權重）；`Text` 變 → `LyriaPlayer.updatePoem()`（只更新詩句 prompt）。兩者共用內部 `latest` 快照、各改各半、互不覆蓋。
 
 ### 測試步驟
 ```bash
 # 1. 起 dev server
 cd /home/ubuntu/tkwang/Light-Sound-Web && npm run dev
 
-# 2. 開頁 http://localhost:3000/music-generation → 點「開始生成聲音」
-#    本機無真實 Supabase 資料時此頁停在「讀取中…」（deploy 上有真實資料則正常掛載）。
-#    若要在本機用「合成假資料」快速試聲音管線，可暫時建一個讀 osc() 假資料的頁面（見 git 歷史的 localtest）。
+# 2. 開頁 http://localhost:3000 → 捲到最下方 → 點「開始生成聲音」
+#    本機無真實 Supabase 資料時底部 block 停在「讀取中…」（deploy 上有真實資料則正常掛載）。
 ```
 - **一定要「點擊」按鈕才會出聲**：瀏覽器 autoplay 政策要求使用者手勢後才能啟動 AudioContext。
 - UI 標頭會顯示來源徽章（`mock 合成` / `real_lyria`）與狀態（待機/緩衝中/播放中）。
@@ -60,28 +67,67 @@ cd /home/ubuntu/tkwang/Light-Sound-Web && npm run dev
 
 ### 遠端機（本機無喇叭）要真正「聽到」
 此開發機是無頭 remote，`localhost:3000` 跑在伺服器上、Cursor 內建瀏覽器不發聲。要在你自己的電腦聽：
-- SSH port forward：`ssh -L 3000:localhost:3000 使用者@伺服器`，再在你電腦開 `http://localhost:3000/music-generation`。
+- SSH port forward：`ssh -L 3000:localhost:3000 使用者@伺服器`，再在你電腦開 `http://localhost:3000`。
 - 或 `next dev -H 0.0.0.0` 綁對外 + 同網段用伺服器 IP 連（記得該 IP 也要進 `allowedDevOrigins`）。
+
+## 2.6 三種音訊來源與「自架 WS proxy」（金鑰不外洩的部署法）
+
+`SoundGenerator` 起播時依序判定來源（`lib/lyriaPlayer.ts` 的 `start()`）：
+1. `NEXT_PUBLIC_FORCE_MOCK=1` → **mock** 合成（正弦波，離線可測）。
+2. 否則有 `NEXT_PUBLIC_LYRIA_PROXY_URL` → **proxy**：連自架 WebSocket proxy，**金鑰只在後端、前端不需金鑰**（不會 inline 進 client bundle）。徽章顯示「串流服務 (proxy)」。
+3. 否則有 `NEXT_PUBLIC_GEMINI_API_KEY` → **real_lyria**：前端直連 Lyria（金鑰會 inline 進前端而**公開暴露**；純展示裝置才用）。
+4. 否則 → **mock**。
+
+### 為什麼要 proxy
+`NEXT_PUBLIC_*` 一定會被 build 進前端 JS，任何人開 DevTools 都看得到。若不想暴露 Gemini 金鑰（或沒有 Vercel 可設環境變數），就在自己的機器跑 `server/lyria-proxy.mjs`：前端連你的 WS proxy，proxy 持金鑰代連 Lyria、把 base64 PCM chunk 轉發回前端；前端仍用同一套 Web Audio 排程播放。協議見該檔頭註解（`start`/`prompts`/`config`/`stop` ↔ `status`/`audio`）。`mapDataToLyria` 是純函式、在前端算好權重/參數再送給 proxy（不含機密）。
+
+### 啟動 proxy（在你自己的 server）
+```bash
+cd /home/ubuntu/tkwang/Light-Sound-Web
+GEMINI_API_KEY=你的有效金鑰 npm run proxy       # 預設 ws://127.0.0.1:8790
+# 可調：LYRIA_PROXY_PORT / LYRIA_PROXY_HOST
+```
+- 依賴已在 `node_modules`（`ws` + `@google/genai`），免額外安裝。
+- 前端要指到 proxy：build 前設 `NEXT_PUBLIC_LYRIA_PROXY_URL=wss://<你的公開網址>`（本機測可用 `ws://127.0.0.1:8790`）。此變數同樣是 build-time inline，改了要重 build。
+
+### 用 Cloudflare Tunnel 對外（不動 Oracle 防火牆）
+此機在 Oracle Cloud NAT 後、預設 port 全擋。用 tunnel 拿公開 https/wss 網址、免開防火牆：
+```bash
+# 1. 起 Next 站（prod）
+npm run build && npm start                       # http://127.0.0.1:3000
+# 2. 起 Lyria proxy（另一個終端機）
+GEMINI_API_KEY=xxx npm run proxy                 # ws://127.0.0.1:8790
+# 3. 各開一條 quick tunnel（cloudflared 已裝於 /usr/local/bin）
+cloudflared tunnel --url http://127.0.0.1:3000   # → 給你 https://aaa.trycloudflare.com（網頁）
+cloudflared tunnel --url http://127.0.0.1:8790   # → 給你 https://bbb.trycloudflare.com（proxy）
+# 4. 把 proxy 的網址（改 https→wss）設進 NEXT_PUBLIC_LYRIA_PROXY_URL 後重 build 網頁站
+#    NEXT_PUBLIC_LYRIA_PROXY_URL=wss://bbb.trycloudflare.com
+```
+- **wss（不是 ws）**：網頁走 https 時，瀏覽器禁止連非加密 ws，必須用 tunnel 給的 https 網址改成 `wss://`。
+- quick tunnel 網址每次重啟會變；要固定網址需用具名 tunnel（`cloudflared tunnel create` + 綁你的網域）。
+- 一台機同時對外兩條：一條給網頁(3000)、一條給 proxy(8790)。也可只用 proxy tunnel、網頁走別的既有站。
 
 ## 3. 專案結構
 
 ```
 app/
   layout.tsx              # RootLayout（Geist 字型）
-  page.tsx                # 主頁：色彩矩陣視覺化 + Gemini 詩句生成（既有；本次未改邏輯）
+  page.tsx                # 主頁：色彩矩陣視覺化 + Gemini 詩句生成
                           #   讀 Supabase LightDate 表 → convertToRGB → 顯示 400 格色彩
-                          #   對最新一筆自動呼叫 Gemini 產生詩句，寫入 aiSupabase.ai_descriptions
+                          #   對最新一筆自動呼叫 Gemini 產生詩句，存於 React state aiDescriptions（記憶體）
+                          #   並以 props 下傳詩句給底部聲音元件（不寫資料庫）
   globals.css
 lib/
-  supabase.ts             # 兩個 Supabase client：supabase(主，光資料)、aiSupabase(詩句)
+  supabase.ts             # 單一 Supabase client：supabase(光資料 LightDate)
   lyriaMapping.ts         # 【聲音】純函式：sRGB/Wavelength/Text → Lyria 參數 + 加權提示詞（可獨立測試）
-  lyriaPlayer.ts          # 【聲音】瀏覽器端 Lyria RealTime client + Web Audio PCM 播放（class LyriaPlayer）
+  lyriaPlayer.ts          # 【聲音】瀏覽器端播放：source=mock/proxy/real_lyria 三路 + Web Audio PCM 排程
+server/
+  lyria-proxy.mjs         # 【聲音】自架 WebSocket proxy：持金鑰代連 Lyria、轉發音訊（npm run proxy）
 components/
   ColorGui.tsx            # 右下角色彩參數面板（權重/明度/對比…；既有）
-  LatestCalibratedColor.tsx  # 讀最新一筆 → 算出 sRGB/Wavelength/Text → 渲染 <DatabaseEmit>
-  DatabaseEmit.tsx        # 接收 sRGB/Wavelength/Text 三種資料；本次改為 render <SoundGenerator>
-  SoundGenerator.tsx      # 【聲音】聲音生成 UI（播放/停止、音量、即時參數/提示詞、統計、mock/real 來源標）
-app/music-generation/page.tsx  # 【聲音】音樂生成頁 /music-generation：讀真實 Supabase 最新光感測資料 → SoundGenerator（deploy 上線頁，裝置直接開此頁播放）
+  LatestCalibratedColor.tsx  # 讀最新一筆 → 算 sRGB/Wavelength → 收 props aiText(詩句) → 渲染 <DatabaseEmit>
+  DatabaseEmit.tsx        # 接收 sRGB/Wavelength/Text 三種資料 → render <SoundGenerator>
+  SoundGenerator.tsx      # 【聲音】聲音生成 UI（播放/停止、音量、即時參數/提示詞、詩詞原文、統計、mock/real 來源標）
 ESP32-Code/               # 感測器韌體（Light-Sensor.ino）
 ```
 
@@ -111,7 +157,7 @@ LatestCalibratedColor  --(sRGB / Wavelength / Text)-->  DatabaseEmit  -->  Sound
 | 暖簇(F5-F8)主導度 | `bpm` (72..108) | 暖色偏慢、冷色偏快（chill 區間） |
 | 亮度 | `temperature` (0.9..1.3) | 越亮越活潑 |
 | 冷簇 F1-F4 / 暖簇 F5-F8 能量比 | 兩條加權 prompt | 冷=ethereal ambient / 暖=lo-fi soulful，權重=能量佔比（保底 0.1） |
-| Text 詩句 | 一條情緒 prompt (權重 0.55) | 含蓄引導音色貼合當下光影心境；null 則略過 |
+| Text 詩句 | 一條 prompt：詩句原文 (權重 0.6) | 直接讓 Lyria 讀到詩詞本身、貼合當下光影心境；null 則略過 |
 
 - 權重下發前會**正規化到總和 1**（`normalizePrompts`）。波長全 0 時退回用 RGB 冷暖傾向估冷/暖權重。
 
@@ -129,11 +175,12 @@ LatestCalibratedColor  --(sRGB / Wavelength / Text)-->  DatabaseEmit  -->  Sound
   ```
   NEXT_PUBLIC_SUPABASE_URL=https://placeholder-project.supabase.co
   NEXT_PUBLIC_SUPABASE_ANON_KEY=placeholder-anon-key
-  NEXT_PUBLIC_AI_SUPABASE_URL=https://placeholder-ai-project.supabase.co
-  NEXT_PUBLIC_AI_SUPABASE_ANON_KEY=placeholder-ai-anon-key
-  NEXT_PUBLIC_GEMINI_API_KEY=            # 留空→mock 合成；填有效金鑰→真實 Lyria
+  NEXT_PUBLIC_GEMINI_API_KEY=            # 留空→mock/或走 proxy；填有效金鑰→前端直連 Lyria（會暴露）
+  # NEXT_PUBLIC_LYRIA_PROXY_URL=wss://xxx.trycloudflare.com  # 設了→走自架 proxy（金鑰在後端，不暴露）
   # NEXT_PUBLIC_FORCE_MOCK=1             # 可選：強制 mock 合成
   ```
+  （詩句改為純前端記憶體，已不需要 `NEXT_PUBLIC_AI_SUPABASE_*` 環境變數。）
+  （proxy 後端另以 `GEMINI_API_KEY`（非 NEXT_PUBLIC_）啟動 `npm run proxy`，金鑰不進前端。）
 - 正式：在 Vercel 專案環境變數設定真實值（含有效 Gemini 金鑰）。
 
 ## 5. 慣例與踩坑
