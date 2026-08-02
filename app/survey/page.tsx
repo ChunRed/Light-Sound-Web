@@ -125,22 +125,21 @@ export default function SurveyPage() {
 
       {/* Main Container - max-w-md for neat mobile reading */}
       <div className="w-full max-w-md z-10 flex flex-col flex-1 justify-center gap-5">
-        
+
         {/* Step 0: Introduction screen */}
         {step === 0 && (
           <div className="flex flex-col items-center justify-center text-center py-10 px-5 bg-white border border-zinc-200/80 rounded-xl shadow-sm max-w-md mx-auto my-auto animate-fade-in">
             <span className="text-[10px] uppercase tracking-widest text-zinc-500 font-bold mb-2.5 px-2.5 py-0.5 bg-zinc-100 rounded-full border border-zinc-200/60">
-              Experiment / 聯覺實驗
+              Glimpses of Light | 截光創作計畫
             </span>
             <h1 className="text-2xl font-bold tracking-tight mb-3 text-zinc-900">
-              聯覺感官問卷調查
+              聲音生成問卷調查
               <span className="block text-sm font-normal text-zinc-400 mt-1">
                 Cross-Modal Perception Survey
               </span>
             </h1>
             <p className="text-xs leading-relaxed text-zinc-500 mb-6 px-2">
-              歡迎來到色彩與音訊的跨媒介映射實驗。
-              在接下來的 10 個步驟中，您將會聆聽 10 首不同的聲音，並根據直覺為每首聲音挑選最契合的色彩以及調整其感知屬性。
+              在接下來的 10 個題目中，您將會聆聽 10 首不同的聲音，並根據直覺為每首聲音挑選最契合的色彩以及調整其感知屬性。
             </p>
             <button
               onClick={startSurvey}
@@ -154,7 +153,7 @@ export default function SurveyPage() {
         {/* Step 1~10: Survey questioning screen */}
         {step > 0 && step <= totalQuestions && currentQuestion && (
           <div className="flex flex-col gap-5 animate-fade-in">
-            
+
             {/* Top Navigation & Progress bar */}
             <div className="flex flex-col gap-2.5 px-0.5">
               <div className="flex justify-between items-end">
@@ -167,7 +166,7 @@ export default function SurveyPage() {
                   {step} / {totalQuestions}
                 </span>
               </div>
-              
+
               {/* Visual Progress Bar */}
               <div className="w-full h-1 bg-zinc-200/60 rounded-full overflow-hidden">
                 <div
@@ -217,11 +216,10 @@ export default function SurveyPage() {
                 <button
                   onClick={handleNext}
                   disabled={!selectedColorId}
-                  className={`flex items-center gap-1.5 py-2.5 px-4 font-semibold rounded-lg transition-all text-xs ${
-                    selectedColorId
-                      ? "bg-zinc-900 text-white active:scale-95 hover:bg-zinc-800 cursor-pointer shadow-sm"
-                      : "bg-zinc-100 text-zinc-400 cursor-not-allowed border border-zinc-200/60"
-                  }`}
+                  className={`flex items-center gap-1.5 py-2.5 px-4 font-semibold rounded-lg transition-all text-xs ${selectedColorId
+                    ? "bg-zinc-900 text-white active:scale-95 hover:bg-zinc-800 cursor-pointer shadow-sm"
+                    : "bg-zinc-100 text-zinc-400 cursor-not-allowed border border-zinc-200/60"
+                    }`}
                 >
                   {step === totalQuestions ? "完成並提交" : "下一題"}
                   <svg
@@ -254,8 +252,10 @@ export default function SurveyPage() {
 
       {/* Footer footer info */}
       <footer className="w-full max-w-md text-center text-[9px] text-zinc-400 mt-10 border-t border-zinc-200/60 pt-3 z-10 flex flex-row justify-between">
-        <span>© 2026 Taiwan Lantern Festival</span>
-        <span>設計：聯覺實驗研究小組</span>
+        <span>© 2026 No Side Here X TK-Wang</span>
+        <span>Glimpse of Light: Negotiating Creative Control
+          Between Environment, Mapping, and Generative
+          Music Models</span>
       </footer>
     </main>
   );

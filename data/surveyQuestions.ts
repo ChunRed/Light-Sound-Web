@@ -66,10 +66,10 @@ export const surveyQuestions: SurveyQuestion[] = [
     audioUrl: '/sounds/Q05_llm_full.wav',
     title: '題目 05',
     colorOptions: [
-      { id: 'A', hex: '#A2A9A4', label: '鼠尾草灰' },
-      { id: 'B', hex: '#ADC0B5', label: '青灰綠' },
-      { id: 'C', hex: '#AFAAA0', label: '麻灰' },
-      { id: 'D', hex: '#D68C8C', label: '珊瑚粉' }
+      { id: 'A', hex: '#C6997E', label: '陶土粉' },
+      { id: 'B', hex: '#B88B70', label: '深赤陶' },
+      { id: 'C', hex: '#BCA89F', label: '暖灰褐' },
+      { id: 'D', hex: '#7A8C9E', label: '霧面藍' }
     ],
     targetColorId: 'A'
   },
