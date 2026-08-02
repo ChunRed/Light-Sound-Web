@@ -5,6 +5,8 @@ import { surveyQuestions, phase2Questions } from "../../data/surveyQuestions";
 import AudioPlayer from "../../components/survey/AudioPlayer";
 import ColorOptionPicker from "../../components/survey/ColorOptionPicker";
 import SoundOptionPicker from "../../components/survey/SoundOptionPicker";
+import Phase1Questionnaire, { Phase1Survey } from "../../components/survey/Phase1Questionnaire";
+import Phase2Questionnaire, { Phase2Survey } from "../../components/survey/Phase2Questionnaire";
 import SurveyResult, { SurveyAnswer, Phase2Answer } from "../../components/survey/SurveyResult";
 
 function getContrastTheme(hex: string): "light" | "dark" {
@@ -27,24 +29,44 @@ function hexToRgbString(hex: string): string {
 export default function SurveyPage() {
   // step = 0: 介紹頁
   // 1 ~ totalPhase1: 第一階段答題中 (聽音選色)
-  // transitionStep: 階段過渡說明頁
+  // phase1QuestStep: 第一階段問卷 (聲音特徵依據 + 直覺程度)
+  // transitionStep: 階段過渡說明頁 (跳轉前導頁)
   // phase2Start ~ phase2End: 第二階段答題中 (看色選音)
+  // phase2QuestStep: 第二階段問卷 (視覺依據 + 決策因素 + 意見回饋)
   // resultsStep: 結果頁
   const [step, setStep] = useState(0);
   const [answers, setAnswers] = useState<SurveyAnswer[]>([]);
   const [phase2Answers, setPhase2Answers] = useState<Phase2Answer[]>([]);
 
+  // 兩階段感知問卷資料
+  const [phase1Survey, setPhase1Survey] = useState<Phase1Survey>({
+    features: [],
+    otherFeature: "",
+    intuition: "",
+  });
+
+  const [phase2Survey, setPhase2Survey] = useState<Phase2Survey>({
+    visualFactors: [],
+    otherVisualFactor: "",
+    decisionFactors: [],
+    otherDecisionFactor: "",
+    feedback: "",
+  });
+
   // 當前題目的暫存狀態
   const [selectedColorId, setSelectedColorId] = useState<"A" | "B" | "C" | "D" | null>(null);
   const [selectedSoundId, setSelectedSoundId] = useState<"A" | "B" | null>(null);
 
-  const totalPhase1 = surveyQuestions.length; // 目前為 5 題
-  const totalPhase2 = phase2Questions.length; // 目前為 10 題
-  const transitionStep = totalPhase1 + 1; // 6
-  const phase2Start = totalPhase1 + 2; // 7
-  const phase2End = totalPhase1 + 1 + totalPhase2; // 16
-  const resultsStep = phase2End + 1; // 17
+  const totalPhase1 = surveyQuestions.length; // 5 題
+  const totalPhase2 = phase2Questions.length; // 10 題
   
+  const phase1QuestStep = totalPhase1 + 1; // 6
+  const transitionStep = totalPhase1 + 2; // 7
+  const phase2Start = totalPhase1 + 3; // 8
+  const phase2End = totalPhase1 + 2 + totalPhase2; // 17
+  const phase2QuestStep = phase2End + 1; // 18
+  const resultsStep = phase2QuestStep + 1; // 19
+
   // 第一階段當前題目
   const currentQuestion = step > 0 && step <= totalPhase1 ? surveyQuestions[step - 1] : null;
 
@@ -67,6 +89,14 @@ export default function SurveyPage() {
     setStep(1);
     setAnswers([]);
     setPhase2Answers([]);
+    setPhase1Survey({ features: [], otherFeature: "", intuition: "" });
+    setPhase2Survey({
+      visualFactors: [],
+      otherVisualFactor: "",
+      decisionFactors: [],
+      otherDecisionFactor: "",
+      feedback: "",
+    });
     setSelectedColorId(null);
     setSelectedSoundId(null);
   };
@@ -76,6 +106,14 @@ export default function SurveyPage() {
     setStep(phase2Start);
     setAnswers([]);
     setPhase2Answers([]);
+    setPhase1Survey({ features: [], otherFeature: "", intuition: "" });
+    setPhase2Survey({
+      visualFactors: [],
+      otherVisualFactor: "",
+      decisionFactors: [],
+      otherDecisionFactor: "",
+      feedback: "",
+    });
     setSelectedColorId(null);
     setSelectedSoundId(null);
   };
@@ -88,13 +126,17 @@ export default function SurveyPage() {
       // 第一階段
       const prevAnswer = answers.find((a) => a.questionId === targetStep);
       setSelectedColorId(prevAnswer ? prevAnswer.selectedColorId : null);
+    } else if (targetStep === phase1QuestStep) {
+      // 第一階段問卷頁
     } else if (targetStep === transitionStep) {
       // 階段切換過渡頁
     } else if (targetStep >= phase2Start && targetStep <= phase2End) {
       // 第二階段
-      const p2QId = targetStep - transitionStep;
+      const p2QId = targetStep - (phase2Start - 1);
       const prevAnswer = phase2Answers.find((a) => a.questionId === p2QId);
       setSelectedSoundId(prevAnswer ? prevAnswer.selectedSoundId : null);
+    } else if (targetStep === phase2QuestStep) {
+      // 第二階段問卷頁
     }
 
     setStep(targetStep);
@@ -124,8 +166,8 @@ export default function SurveyPage() {
       });
 
       const nextStep = step + 1;
-      if (nextStep === transitionStep) {
-        setStep(transitionStep);
+      if (nextStep === phase1QuestStep) {
+        setStep(phase1QuestStep);
       } else {
         const nextAnswer = answers.find((a) => a.questionId === nextStep);
         setSelectedColorId(nextAnswer ? nextAnswer.selectedColorId : null);
@@ -158,10 +200,10 @@ export default function SurveyPage() {
       });
 
       const nextStep = step + 1;
-      if (nextStep === resultsStep) {
-        setStep(resultsStep);
+      if (nextStep === phase2QuestStep) {
+        setStep(phase2QuestStep);
       } else {
-        const nextP2QId = nextStep - transitionStep;
+        const nextP2QId = nextStep - (phase2Start - 1);
         const nextAnswer = phase2Answers.find((a) => a.questionId === nextP2QId);
         setSelectedSoundId(nextAnswer ? nextAnswer.selectedSoundId : null);
         setStep(nextStep);
@@ -305,7 +347,17 @@ export default function SurveyPage() {
           </div>
         )}
 
-        {/* Step 6: Transition Screen */}
+        {/* Step 6: Phase 1 Questionnaire */}
+        {step === phase1QuestStep && (
+          <Phase1Questionnaire
+            value={phase1Survey}
+            onChange={setPhase1Survey}
+            onBack={() => navigateToStep(totalPhase1)}
+            onNext={() => navigateToStep(transitionStep)}
+          />
+        )}
+
+        {/* Step 7: Transition Screen */}
         {step === transitionStep && (
           <div className="flex flex-col items-center justify-center text-center py-10 px-5 bg-white border border-zinc-200/80 rounded-xl shadow-sm max-w-md mx-auto my-auto animate-fade-in">
             <span className="text-[10px] uppercase tracking-widest text-zinc-500 font-bold mb-2.5 px-2.5 py-0.5 bg-zinc-100 rounded-full border border-zinc-200/60">
@@ -315,17 +367,17 @@ export default function SurveyPage() {
               第一階段：聽音選色已完成
             </h1>
             <p className="text-xs leading-relaxed text-zinc-500 mb-6 px-2">
-              您已順利完成第一階段。
+              您已順利完成第一階段及其反饋問卷。
               <br />
               接下來進入 **第二階段：看色選音**。
               您將看到一個指定的色彩，請聆聽下方兩個聲音選項，選擇最契合該色彩的音訊。
             </p>
             <div className="flex w-full gap-3">
               <button
-                onClick={() => navigateToStep(totalPhase1)}
+                onClick={() => navigateToStep(phase1QuestStep)}
                 className="py-3 px-4 border border-zinc-200 text-zinc-700 rounded-xl hover:bg-zinc-50 active:scale-95 transition-all cursor-pointer text-xs bg-white font-semibold"
               >
-                返回第一階段
+                返回填寫問卷
               </button>
               <button
                 onClick={() => navigateToStep(phase2Start)}
@@ -337,7 +389,7 @@ export default function SurveyPage() {
           </div>
         )}
 
-        {/* Step 7~16: Survey Phase 2 questioning screen */}
+        {/* Step 8~17: Survey Phase 2 questioning screen */}
         {step >= phase2Start && step <= phase2End && (
           <div className="flex flex-col gap-5 animate-fade-in">
             {/* Top Navigation & Progress bar */}
@@ -348,11 +400,11 @@ export default function SurveyPage() {
                     Phase 2 | 第二階段：看色選音
                   </span>
                   <h2 className="text-base font-bold text-zinc-800 mt-0.5 font-mono">
-                    題目 {String(step - transitionStep).padStart(2, "0")}
+                    題目 {String(step - (phase2Start - 1)).padStart(2, "0")}
                   </h2>
                 </div>
                 <span className="text-[10px] font-bold text-zinc-400 font-mono">
-                  {step - transitionStep} / {totalPhase2}
+                  {step - (phase2Start - 1)} / {totalPhase2}
                 </span>
               </div>
 
@@ -360,7 +412,7 @@ export default function SurveyPage() {
               <div className="w-full h-1 bg-zinc-200/60 rounded-full overflow-hidden">
                 <div
                   className="h-full bg-zinc-900 transition-all duration-500 ease-out"
-                  style={{ width: `${((step - transitionStep) / totalPhase2) * 100}%` }}
+                  style={{ width: `${((step - (phase2Start - 1)) / totalPhase2) * 100}%` }}
                 />
               </div>
             </div>
@@ -437,7 +489,7 @@ export default function SurveyPage() {
                   : "bg-zinc-100 text-zinc-400 cursor-not-allowed border border-zinc-200/60"
                   }`}
               >
-                {step === phase2End ? "完成並提交" : "下一頁"}
+                下一頁
                 <svg
                   className="w-3.5 h-3.5 fill-current"
                   viewBox="0 0 20 20"
@@ -454,11 +506,23 @@ export default function SurveyPage() {
           </div>
         )}
 
-        {/* Step 17: Result page */}
+        {/* Step 18: Phase 2 Questionnaire */}
+        {step === phase2QuestStep && (
+          <Phase2Questionnaire
+            value={phase2Survey}
+            onChange={setPhase2Survey}
+            onBack={() => navigateToStep(phase2End)}
+            onNext={() => navigateToStep(resultsStep)}
+          />
+        )}
+
+        {/* Step 19: Result page */}
         {step === resultsStep && (
           <SurveyResult
             answers={answers}
             phase2Answers={phase2Answers}
+            phase1Survey={phase1Survey}
+            phase2Survey={phase2Survey}
             onRestart={startSurvey}
           />
         )}

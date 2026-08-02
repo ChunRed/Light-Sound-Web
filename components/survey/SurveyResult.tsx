@@ -2,6 +2,8 @@
 
 import { useState } from "react";
 import { surveyQuestions, phase2Questions } from "../../data/surveyQuestions";
+import { Phase1Survey } from "./Phase1Questionnaire";
+import { Phase2Survey } from "./Phase2Questionnaire";
 
 function hexToRgbString(hex: string): string {
   const cleanHex = hex.startsWith("#") ? hex.slice(1) : hex;
@@ -30,12 +32,16 @@ export interface Phase2Answer {
 interface SurveyResultProps {
   answers: SurveyAnswer[];
   phase2Answers: Phase2Answer[];
+  phase1Survey: Phase1Survey;
+  phase2Survey: Phase2Survey;
   onRestart: () => void;
 }
 
 export default function SurveyResult({
   answers,
   phase2Answers,
+  phase1Survey,
+  phase2Survey,
   onRestart,
 }: SurveyResultProps) {
   const [activeTab, setActiveTab] = useState<"phase1" | "phase2">("phase1");
@@ -45,7 +51,9 @@ export default function SurveyResult({
     const surveyData = {
       timestamp: new Date().toISOString(),
       phase1Answers: answers,
+      phase1Survey: phase1Survey,
       phase2Answers: phase2Answers,
+      phase2Survey: phase2Survey,
     };
 
     console.log("[Survey Result Data]:", surveyData);
@@ -171,6 +179,33 @@ export default function SurveyResult({
                 </div>
               );
             })}
+
+            {/* Phase 1 Survey Feedback display */}
+            {phase1Survey && (phase1Survey.features.length > 0 || phase1Survey.intuition) && (
+              <div className="bg-zinc-50 border border-zinc-200/80 rounded-xl p-4 flex flex-col gap-3 shadow-sm mt-2">
+                <h3 className="text-xs font-bold text-zinc-800 border-b border-zinc-200/60 pb-2">
+                  第一階段感知反饋
+                </h3>
+                {phase1Survey.features.length > 0 && (
+                  <div className="flex flex-col gap-1">
+                    <span className="text-[10px] text-zinc-400 font-semibold uppercase">依據的聲音特徵：</span>
+                    <ul className="list-disc pl-4 text-xs text-zinc-600 flex flex-col gap-0.5">
+                      {phase1Survey.features.map((f) => (
+                        <li key={f}>
+                          {f === "其他" && phase1Survey.otherFeature ? `其他：${phase1Survey.otherFeature}` : f}
+                        </li>
+                      ))}
+                    </ul>
+                  </div>
+                )}
+                {phase1Survey.intuition && (
+                  <div className="flex flex-col gap-1 mt-1">
+                    <span className="text-[10px] text-zinc-400 font-semibold uppercase">直覺連結程度：</span>
+                    <span className="text-xs text-zinc-750">{phase1Survey.intuition}</span>
+                  </div>
+                )}
+              </div>
+            )}
           </div>
         )
       ) : (
@@ -221,6 +256,47 @@ export default function SurveyResult({
                 </div>
               );
             })}
+
+            {/* Phase 2 Survey Feedback display */}
+            {phase2Survey && (phase2Survey.visualFactors.length > 0 || phase2Survey.decisionFactors.length > 0 || phase2Survey.feedback) && (
+              <div className="bg-zinc-50 border border-zinc-200/80 rounded-xl p-4 flex flex-col gap-3 shadow-sm mt-2">
+                <h3 className="text-xs font-bold text-zinc-800 border-b border-zinc-200/60 pb-2">
+                  第二階段感知反饋
+                </h3>
+                {phase2Survey.visualFactors.length > 0 && (
+                  <div className="flex flex-col gap-1">
+                    <span className="text-[10px] text-zinc-400 font-semibold uppercase">影響判斷的色彩視覺特性：</span>
+                    <ul className="list-disc pl-4 text-xs text-zinc-600 flex flex-col gap-0.5">
+                      {phase2Survey.visualFactors.map((v) => (
+                        <li key={v}>
+                          {v === "其他" && phase2Survey.otherVisualFactor ? `其他：${phase2Survey.otherVisualFactor}` : v}
+                        </li>
+                      ))}
+                    </ul>
+                  </div>
+                )}
+                {phase2Survey.decisionFactors.length > 0 && (
+                  <div className="flex flex-col gap-1 mt-1">
+                    <span className="text-[10px] text-zinc-400 font-semibold uppercase">聲音二選一決策因素：</span>
+                    <ul className="list-disc pl-4 text-xs text-zinc-600 flex flex-col gap-0.5">
+                      {phase2Survey.decisionFactors.map((d) => (
+                        <li key={d}>
+                          {d === "其他" && phase2Survey.otherDecisionFactor ? `其他：${phase2Survey.otherDecisionFactor}` : d}
+                        </li>
+                      ))}
+                    </ul>
+                  </div>
+                )}
+                {phase2Survey.feedback && (
+                  <div className="flex flex-col gap-1 mt-1">
+                    <span className="text-[10px] text-zinc-400 font-semibold uppercase">意見回饋：</span>
+                    <p className="text-xs text-zinc-700 bg-white p-2.5 rounded-lg border border-zinc-200/60 leading-relaxed whitespace-pre-wrap">
+                      {phase2Survey.feedback}
+                    </p>
+                  </div>
+                )}
+              </div>
+            )}
           </div>
         )
       )}
