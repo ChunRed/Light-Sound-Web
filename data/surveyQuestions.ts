@@ -8,129 +8,177 @@ export interface SurveyQuestion {
   id: number;
   audioUrl: string;
   title: string;
-  colorOptions: [ColorOption, ColorOption, ColorOption, ColorOption];
+  colorOptions: ColorOption[];
   targetColorId?: 'A' | 'B' | 'C' | 'D';
 }
 
-export const surveyQuestions: SurveyQuestion[] = [
+export interface Phase2Question {
+  id: number;
+  title: string;
+  targetColorHex: string;
+  soundOptions: {
+    A: string;
+    B: string;
+  };
+  targetSoundId: 'A' | 'B';
+}
+
+// 實作計算 HEX 補色 (採用 HSL 色相旋轉 180 度，保留相同明度與飽和度) 的輔助函式
+function getComplementaryColor(hex: string): string {
+  const cleanHex = hex.startsWith("#") ? hex.slice(1) : hex;
+  const r = parseInt(cleanHex.substring(0, 2), 16) / 255;
+  const g = parseInt(cleanHex.substring(2, 4), 16) / 255;
+  const b = parseInt(cleanHex.substring(4, 6), 16) / 255;
+
+  const max = Math.max(r, g, b);
+  const min = Math.min(r, g, b);
+  let h = 0;
+  let s = 0;
+  const l = (max + min) / 2;
+
+  if (max !== min) {
+    const d = max - min;
+    s = l > 0.5 ? d / (2 - max - min) : d / (max + min);
+    if (max === r) {
+      h = (g - b) / d + (g < b ? 6 : 0);
+    } else if (max === g) {
+      h = (b - r) / d + 2;
+    } else {
+      h = (r - g) / d + 4;
+    }
+    h /= 6;
+  }
+
+  // 旋轉色相 180 度 (即在 0..1 範圍中 + 0.5) 得到對比色相
+  h = (h + 0.5) % 1.0;
+
+  const hue2rgb = (p: number, q: number, t: number) => {
+    let val = t;
+    if (val < 0) val += 1;
+    if (val > 1) val -= 1;
+    if (val < 1 / 6) return p + (q - p) * 6 * val;
+    if (val < 1 / 2) return q;
+    if (val < 2 / 3) return p + (q - p) * (2 / 3 - val) * 6;
+    return p;
+  };
+
+  let rComp, gComp, bComp;
+  if (s === 0) {
+    rComp = gComp = bComp = l;
+  } else {
+    const q = l < 0.5 ? l * (1 + s) : l + s - l * s;
+    const p = 2 * l - q;
+    rComp = hue2rgb(p, q, h + 1 / 3);
+    gComp = hue2rgb(p, q, h);
+    bComp = hue2rgb(p, q, h - 1 / 3);
+  }
+
+  const pad = (num: number) => {
+    const val = Math.round(num * 255);
+    return val.toString(16).padStart(2, "0");
+  };
+  return `#${pad(rComp)}${pad(gComp)}${pad(bComp)}`.toUpperCase();
+}
+
+// 完整的 10 題原始資料
+const rawQuestions = [
+  { id: 1, hex: '#FBFBD5', label: '淡米黃', audio: '/sounds/Q01_llm_full.wav' },
+  { id: 2, hex: '#E2F3BA', label: '嫩綠', audio: '/sounds/Q02_llm_full.wav' },
+  { id: 3, hex: '#5C563D', label: '深橄欖棕', audio: '/sounds/Q03_llm_full.wav' },
+  { id: 4, hex: '#A2A9A4', label: '鼠尾草灰', audio: '/sounds/Q04_llm_full.wav' },
+  { id: 5, hex: '#C6997E', label: '陶土粉', audio: '/sounds/Q05_llm_full.wav' },
+  { id: 6, hex: '#968CBD', label: '薰衣草紫', audio: '/sounds/Q06_llm_full.wav' },
+  { id: 7, hex: '#CEBADA', label: '丁香紫', audio: '/sounds/Q07_llm_full.wav' },
+  { id: 8, hex: '#EDBDBD', label: '霧粉', audio: '/sounds/Q08_llm_full.wav' },
+  { id: 9, hex: '#584F48', label: '深岩灰', audio: '/sounds/Q09_llm_full.wav' },
+  { id: 10, hex: '#E4DB90', label: '鵝黃', audio: '/sounds/Q10_llm_full.wav' }
+];
+
+// 階段一正確答案為 A A B A B (前 5 題)
+const phase1TargetColorIds: ('A' | 'B')[] = ['A', 'A', 'B', 'A', 'B'];
+
+// 1. 產生階段一題目 (surveyQuestions)
+export const surveyQuestions: SurveyQuestion[] = rawQuestions.slice(0, 5).map((q, idx) => {
+  const targetId = phase1TargetColorIds[idx];
+  const isTargetA = targetId === 'A';
+  const compHex = getComplementaryColor(q.hex);
+
+  return {
+    id: q.id,
+    audioUrl: q.audio,
+    title: `題目 0${q.id}`,
+    colorOptions: [
+      {
+        id: 'A',
+        hex: isTargetA ? q.hex : compHex,
+        label: isTargetA ? q.label : '補色'
+      },
+      {
+        id: 'B',
+        hex: isTargetA ? compHex : q.hex,
+        label: isTargetA ? '補色' : q.label
+      }
+    ],
+    targetColorId: targetId
+  };
+});
+
+// 2. 產生階段二題目 (phase2Questions)
+// 題目配置對照：
+// 題目 1: 聲音 (10, 3)，正確答案為 10 ➔ 目標色彩為 Q10 ➔ 聲音 B 是正確答案 (targetSoundId: 'B')
+// 題目 2: 聲音 (6, 2)，正確答案為 6 ➔ 目標色彩為 Q06 ➔ 聲音 A 是正確答案 (targetSoundId: 'A')
+// 題目 3: 聲音 (1, 5)，正確答案為 1 ➔ 目標色彩為 Q01 ➔ 聲音 B 是正確答案 (targetSoundId: 'B')
+// 題目 4: 聲音 (9, 8)，正確答案為 9 ➔ 目標色彩為 Q09 ➔ 聲音 A 是正確答案 (targetSoundId: 'A')
+// 題目 5: 聲音 (7, 6)，正確答案為 7 ➔ 目標色彩為 Q07 ➔ 聲音 A 是正確答案 (targetSoundId: 'A')
+export const phase2Questions: Phase2Question[] = [
   {
     id: 1,
-    audioUrl: '/sounds/Q01_llm_full.wav',
     title: '題目 01',
-    colorOptions: [
-      { id: 'A', hex: '#FBFBD5', label: '淡米黃' },
-      { id: 'B', hex: '#FAF1D2', label: '暖米黃' },
-      { id: 'C', hex: '#E0E6D3', label: '冷灰綠' },
-      { id: 'D', hex: '#7A8599', label: '深灰藍' }
-    ],
-    targetColorId: 'A'
+    targetColorHex: rawQuestions[9].hex, // Q10 color
+    soundOptions: {
+      A: rawQuestions[3].audio, // Q03
+      B: rawQuestions[9].audio  // Q10 (Correct)
+    },
+    targetSoundId: 'B'
   },
   {
     id: 2,
-    audioUrl: '/sounds/Q02_llm_full.wav',
     title: '題目 02',
-    colorOptions: [
-      { id: 'A', hex: '#E2F3BA', label: '嫩綠' },
-      { id: 'B', hex: '#D4EBAA', label: '草綠' },
-      { id: 'C', hex: '#C2F0E8', label: '薄荷綠' },
-      { id: 'D', hex: '#E8AD8D', label: '粉橙' }
-    ],
-    targetColorId: 'A'
+    targetColorHex: rawQuestions[5].hex, // Q06 color
+    soundOptions: {
+      A: rawQuestions[5].audio, // Q06 (Correct)
+      B: rawQuestions[1].audio  // Q02
+    },
+    targetSoundId: 'A'
   },
   {
     id: 3,
-    audioUrl: '/sounds/Q03_llm_full.wav',
     title: '題目 03',
-    colorOptions: [
-      { id: 'A', hex: '#5C563D', label: '深橄欖棕' },
-      { id: 'B', hex: '#695F43', label: '大地棕綠' },
-      { id: 'C', hex: '#4A5859', label: '深冷藍灰' },
-      { id: 'D', hex: '#D9C3A3', label: '淺沙色' }
-    ],
-    targetColorId: 'A'
+    targetColorHex: rawQuestions[0].hex, // Q01 color
+    soundOptions: {
+      A: rawQuestions[7].audio, // Q05
+      B: rawQuestions[0].audio  // Q01 (Correct)
+    },
+    targetSoundId: 'B'
   },
   {
     id: 4,
-    audioUrl: '/sounds/Q04_llm_full.wav',
     title: '題目 04',
-    colorOptions: [
-      { id: 'A', hex: '#A2A9A4', label: '鼠尾草灰' },
-      { id: 'B', hex: '#98A39E', label: '濃灰綠' },
-      { id: 'C', hex: '#B8ADAC', label: '暖灰粉' },
-      { id: 'D', hex: '#3B4252', label: '夜空藍' }
-    ],
-    targetColorId: 'A'
+    targetColorHex: rawQuestions[8].hex, // Q09 color
+    soundOptions: {
+      A: rawQuestions[8].audio, // Q09 (Correct)
+      B: rawQuestions[1].audio  // Q08
+    },
+    targetSoundId: 'A'
   },
   {
     id: 5,
-    audioUrl: '/sounds/Q05_llm_full.wav',
     title: '題目 05',
-    colorOptions: [
-      { id: 'A', hex: '#C6997E', label: '陶土粉' },
-      { id: 'B', hex: '#B88B70', label: '深赤陶' },
-      { id: 'C', hex: '#BCA89F', label: '暖灰褐' },
-      { id: 'D', hex: '#7A8C9E', label: '霧面藍' }
-    ],
-    targetColorId: 'A'
-  },
-  {
-    id: 6,
-    audioUrl: '/sounds/Q06_llm_full.wav',
-    title: '題目 06',
-    colorOptions: [
-      { id: 'A', hex: '#968CBD', label: '薰衣草紫' },
-      { id: 'B', hex: '#8A7FB8', label: '芋紫' },
-      { id: 'C', hex: '#8A9BB8', label: '霧藍' },
-      { id: 'D', hex: '#C2A878', label: '燕麥黃' }
-    ],
-    targetColorId: 'A'
-  },
-  {
-    id: 7,
-    audioUrl: '/sounds/Q07_llm_full.wav',
-    title: '題目 07',
-    colorOptions: [
-      { id: 'A', hex: '#CEBADA', label: '丁香紫' },
-      { id: 'B', hex: '#D8C4E6', label: '粉紫' },
-      { id: 'C', hex: '#B8C8E0', label: '粉藍' },
-      { id: 'D', hex: '#7A6052', label: '可可棕' }
-    ],
-    targetColorId: 'A'
-  },
-  {
-    id: 8,
-    audioUrl: '/sounds/Q08_llm_full.wav',
-    title: '題目 08',
-    colorOptions: [
-      { id: 'A', hex: '#EDBDBD', label: '霧粉' },
-      { id: 'B', hex: '#EBD0D0', label: '柔粉' },
-      { id: 'C', hex: '#E6DFD3', label: '米白' },
-      { id: 'D', hex: '#6B8B8E', label: '藍綠' }
-    ],
-    targetColorId: 'A'
-  },
-  {
-    id: 9,
-    audioUrl: '/sounds/Q09_llm_full.wav',
-    title: '題目 09',
-    colorOptions: [
-      { id: 'A', hex: '#584F48', label: '深岩灰' },
-      { id: 'B', hex: '#665B54', label: '暖泥棕' },
-      { id: 'C', hex: '#485258', label: '暗灰藍' },
-      { id: 'D', hex: '#E0D8B8', label: '亞麻黃' }
-    ],
-    targetColorId: 'A'
-  },
-  {
-    id: 10,
-    audioUrl: '/sounds/Q10_llm_full.wav',
-    title: '題目 10',
-    colorOptions: [
-      { id: 'A', hex: '#E4DB90', label: '鵝黃' },
-      { id: 'B', hex: '#D6CD7C', label: '芥末黃' },
-      { id: 'C', hex: '#D2E490', label: '黃綠' },
-      { id: 'D', hex: '#8B7082', label: '灰紫' }
-    ],
-    targetColorId: 'A'
+    targetColorHex: rawQuestions[6].hex, // Q07 color
+    soundOptions: {
+      A: rawQuestions[6].audio, // Q07 (Correct)
+      B: rawQuestions[5].audio  // Q06
+    },
+    targetSoundId: 'A'
   }
 ];
