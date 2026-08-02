@@ -127,37 +127,39 @@ export const surveyQuestions: SurveyQuestion[] = rawQuestions.slice(0, 5).map((q
 // 題目配置對照：
 // 題目 1: 聲音 (10, 3)，正確答案為 10 ➔ 目標色彩為 Q10 ➔ 聲音 B 是正確答案 (targetSoundId: 'B')
 // 題目 2: 聲音 (6, 2)，正確答案為 6 ➔ 目標色彩為 Q06 ➔ 聲音 A 是正確答案 (targetSoundId: 'A')
-// 題目 3: 聲音 (1, 5)，正確答案為 1 ➔ 目標色彩為 Q01 ➔ 聲音 B 是正確答案 (targetSoundId: 'B')
-// 題目 4: 聲音 (9, 8)，正確答案為 9 ➔ 目標色彩為 Q09 ➔ 聲音 A 是正確答案 (targetSoundId: 'A')
-// 題目 5: 聲音 (7, 6)，正確答案為 7 ➔ 目標色彩為 Q07 ➔ 聲音 A 是正確答案 (targetSoundId: 'A')
+// 題目 1: 聲音 (Q06_full, Q06_nopoem)，正確答案為 Q06_full ➔ 目標色彩為 Q06 ➔ 聲音 B 是正確答案 (targetSoundId: 'B')
+// 題目 2: 聲音 (Q07_nopoem, Q07_full)，正確答案為 Q07_nopoem ➔ 目標色彩為 Q07 ➔ 聲音 A 是正確答案 (targetSoundId: 'A')
+// 題目 3: 聲音 (Q08_full, Q08_nopoem)，正確答案為 Q08_full ➔ 目標色彩為 Q08 ➔ 聲音 B 是正確答案 (targetSoundId: 'B')
+// 題目 4: 聲音 (Q09_nopoem, Q09_full)，正確答案為 Q09_nopoem ➔ 目標色彩為 Q09 ➔ 聲音 A 是正確答案 (targetSoundId: 'A')
+// 題目 5: 聲音 (Q10_nopoem, Q10_full)，正確答案為 Q10_nopoem ➔ 目標色彩為 Q10 ➔ 聲音 A 是正確答案 (targetSoundId: 'A')
 export const phase2Questions: Phase2Question[] = [
   {
     id: 1,
     title: '題目 01',
-    targetColorHex: rawQuestions[9].hex, // Q10 color
+    targetColorHex: rawQuestions[5].hex, // Q06 color
     soundOptions: {
-      A: rawQuestions[3].audio, // Q03
-      B: rawQuestions[9].audio  // Q10 (Correct)
+      A: '/sounds/Q06_llm_nopoem.wav',
+      B: '/sounds/Q06_llm_full.wav'
     },
     targetSoundId: 'B'
   },
   {
     id: 2,
     title: '題目 02',
-    targetColorHex: rawQuestions[5].hex, // Q06 color
+    targetColorHex: rawQuestions[6].hex, // Q07 color
     soundOptions: {
-      A: rawQuestions[5].audio, // Q06 (Correct)
-      B: rawQuestions[1].audio  // Q02
+      A: '/sounds/Q07_llm_nopoem.wav',
+      B: '/sounds/Q07_llm_full.wav'
     },
     targetSoundId: 'A'
   },
   {
     id: 3,
     title: '題目 03',
-    targetColorHex: rawQuestions[0].hex, // Q01 color
+    targetColorHex: rawQuestions[7].hex, // Q08 color
     soundOptions: {
-      A: rawQuestions[7].audio, // Q05
-      B: rawQuestions[0].audio  // Q01 (Correct)
+      A: '/sounds/Q08_llm_nopoem.wav',
+      B: '/sounds/Q08_llm_full.wav'
     },
     targetSoundId: 'B'
   },
@@ -166,18 +168,18 @@ export const phase2Questions: Phase2Question[] = [
     title: '題目 04',
     targetColorHex: rawQuestions[8].hex, // Q09 color
     soundOptions: {
-      A: rawQuestions[8].audio, // Q09 (Correct)
-      B: rawQuestions[1].audio  // Q08
+      A: '/sounds/Q09_llm_nopoem.wav',
+      B: '/sounds/Q09_llm_full.wav'
     },
     targetSoundId: 'A'
   },
   {
     id: 5,
     title: '題目 05',
-    targetColorHex: rawQuestions[6].hex, // Q07 color
+    targetColorHex: rawQuestions[9].hex, // Q10 color
     soundOptions: {
-      A: rawQuestions[6].audio, // Q07 (Correct)
-      B: rawQuestions[5].audio  // Q06
+      A: '/sounds/Q10_llm_nopoem.wav',
+      B: '/sounds/Q10_llm_full.wav'
     },
     targetSoundId: 'A'
   }
