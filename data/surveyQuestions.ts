@@ -125,13 +125,16 @@ export const surveyQuestions: SurveyQuestion[] = rawQuestions.slice(0, 5).map((q
 
 // 2. 產生階段二題目 (phase2Questions)
 // 題目配置對照：
-// 題目 1: 聲音 (10, 3)，正確答案為 10 ➔ 目標色彩為 Q10 ➔ 聲音 B 是正確答案 (targetSoundId: 'B')
-// 題目 2: 聲音 (6, 2)，正確答案為 6 ➔ 目標色彩為 Q06 ➔ 聲音 A 是正確答案 (targetSoundId: 'A')
 // 題目 1: 聲音 (Q06_full, Q06_nopoem)，正確答案為 Q06_full ➔ 目標色彩為 Q06 ➔ 聲音 B 是正確答案 (targetSoundId: 'B')
 // 題目 2: 聲音 (Q07_nopoem, Q07_full)，正確答案為 Q07_nopoem ➔ 目標色彩為 Q07 ➔ 聲音 A 是正確答案 (targetSoundId: 'A')
 // 題目 3: 聲音 (Q08_full, Q08_nopoem)，正確答案為 Q08_full ➔ 目標色彩為 Q08 ➔ 聲音 B 是正確答案 (targetSoundId: 'B')
 // 題目 4: 聲音 (Q09_nopoem, Q09_full)，正確答案為 Q09_nopoem ➔ 目標色彩為 Q09 ➔ 聲音 A 是正確答案 (targetSoundId: 'A')
 // 題目 5: 聲音 (Q10_nopoem, Q10_full)，正確答案為 Q10_nopoem ➔ 目標色彩為 Q10 ➔ 聲音 A 是正確答案 (targetSoundId: 'A')
+// 題目 6: 聲音 (Q11_full, Q11_nopoem)，正確答案為 Q11_full ➔ 目標色彩為 Q11 ➔ 聲音 A 是正確答案 (targetSoundId: 'A')
+// 題目 7: 聲音 (Q12_nopoem, Q12_full)，正確答案為 Q12_nopoem ➔ 目標色彩為 Q12 ➔ 聲音 A 是正確答案 (targetSoundId: 'A')
+// 題目 8: 聲音 (Q13_full, Q13_nopoem)，正確答案為 Q13_full ➔ 目標色彩為 Q13 ➔ 聲音 A 是正確答案 (targetSoundId: 'A')
+// 題目 9: 聲音 (Q14_nopoem, Q14_full)，正確答案為 Q14_nopoem ➔ 目標色彩為 Q14 ➔ 聲音 A 是正確答案 (targetSoundId: 'A')
+// 題目 10: 聲音 (Q09_nopoem, Q09_full)，正確答案為 Q09_nopoem ➔ 目標色彩為 Q09 ➔ 聲音 A 是正確答案 (targetSoundId: 'A')
 export const phase2Questions: Phase2Question[] = [
   {
     id: 1,
@@ -180,6 +183,56 @@ export const phase2Questions: Phase2Question[] = [
     soundOptions: {
       A: '/sounds/Q10_llm_nopoem.wav',
       B: '/sounds/Q10_llm_full.wav'
+    },
+    targetSoundId: 'A'
+  },
+  {
+    id: 6,
+    title: '題目 06',
+    targetColorHex: '#E3A857', // Q11 custom color (Curry Gold)
+    soundOptions: {
+      A: '/sounds/Q11_llm_full.wav',
+      B: '/sounds/Q11_llm_nopoem.wav'
+    },
+    targetSoundId: 'A'
+  },
+  {
+    id: 7,
+    title: '題目 07',
+    targetColorHex: '#6A8D73', // Q12 custom color (Sage Green)
+    soundOptions: {
+      A: '/sounds/Q12_llm_nopoem.wav',
+      B: '/sounds/Q12_llm_full.wav'
+    },
+    targetSoundId: 'A'
+  },
+  {
+    id: 8,
+    title: '題目 08',
+    targetColorHex: '#496A81', // Q13 custom color (Steel Blue)
+    soundOptions: {
+      A: '/sounds/Q13_llm_full.wav',
+      B: '/sounds/Q13_llm_nopoem.wav'
+    },
+    targetSoundId: 'A'
+  },
+  {
+    id: 9,
+    title: '題目 09',
+    targetColorHex: '#D07A7C', // Q14 custom color (Rose Dust)
+    soundOptions: {
+      A: '/sounds/Q14_llm_nopoem.wav',
+      B: '/sounds/Q14_llm_full.wav'
+    },
+    targetSoundId: 'A'
+  },
+  {
+    id: 10,
+    title: '題目 10',
+    targetColorHex: rawQuestions[8].hex, // Q09 color
+    soundOptions: {
+      A: '/sounds/Q09_llm_nopoem.wav',
+      B: '/sounds/Q09_llm_full.wav'
     },
     targetSoundId: 'A'
   }
